@@ -1,0 +1,180 @@
+{{- if .Values.provisioning.enabled }}
+# Job post-install/post-upgrade : crée l'owner n8n + une clé API + patch le Secret.
+# Idempotent : skip si N8N_API_KEY déjà présente dans le Secret.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "n8n.fullname" . }}-provisioning
+  labels:
+    {{- include "n8n.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        {{- include "n8n.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: provisioner
+    spec:
+      serviceAccountName: {{ include "n8n.fullname" . }}-provisioner
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: provisioner
+          image: "{{ .Values.provisioning.image.repository }}:{{ .Values.provisioning.image.tag }}"
+          imagePullPolicy: {{ .Values.provisioning.image.pullPolicy }}
+          env:
+            - name: N8N_URL
+              value: "http://{{ include "n8n.fullname" . }}:{{ .Values.n8n.port }}"
+            - name: SECRET_NAME
+              value: {{ include "n8n.fullname" . | quote }}
+            - name: API_KEY_LABEL
+              value: {{ .Values.provisioning.apiKeyLabel | quote }}
+            - name: OWNER_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "n8n.fullname" . }}
+                  key: ownerEmail
+            - name: OWNER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "n8n.fullname" . }}
+                  key: ownerPassword
+            - name: OWNER_FIRST_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "n8n.fullname" . }}
+                  key: ownerFirstName
+            - name: OWNER_LAST_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "n8n.fullname" . }}
+                  key: ownerLastName
+          command:
+            - sh
+            - -c
+            - |
+              set -u
+              echo "[provisioner] Installation curl + jq..."
+              # Tolérer un échec de mirror : on retente une fois.
+              apk add --no-cache curl jq >/dev/null 2>&1 || apk add --no-cache curl jq >/dev/null 2>&1 || {
+                echo "[KO] apk add curl jq échec. Abort."
+                exit 0
+              }
+
+              NAMESPACE=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
+              SA_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+              CACERT=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+
+              # 1) Skip si N8N_API_KEY déjà présente et non vide.
+              EXISTING_B64=$(curl -sf --cacert "$CACERT" \
+                -H "Authorization: Bearer $SA_TOKEN" \
+                "https://kubernetes.default.svc/api/v1/namespaces/$NAMESPACE/secrets/$SECRET_NAME" \
+                | jq -r '.data.N8N_API_KEY // empty')
+              if [ -n "$EXISTING_B64" ]; then
+                EXISTING=$(echo -n "$EXISTING_B64" | base64 -d 2>/dev/null || true)
+                if [ ${#EXISTING} -gt 20 ]; then
+                  echo "[OK] N8N_API_KEY déjà présente (longueur ${#EXISTING} char). Skip."
+                  exit 0
+                fi
+              fi
+
+              # 2) Attente n8n ready (max 5 min).
+              echo "[--] Attente n8n ready sur $N8N_URL ..."
+              READY=0
+              for i in $(seq 1 60); do
+                if curl -sf "$N8N_URL/healthz" >/dev/null 2>&1; then
+                  echo "[OK] n8n ready après $i tentative(s)"
+                  READY=1
+                  break
+                fi
+                sleep 5
+              done
+              if [ "$READY" -ne 1 ]; then
+                echo "[KO] n8n pas ready après 5 min. Abort."
+                exit 0
+              fi
+
+              # 3) Tentative setup owner (idempotent côté n8n : 400 si déjà fait).
+              echo "[--] Tentative setup owner..."
+              SETUP_HTTP=$(curl -s -o /tmp/setup_resp -w "%{http_code}" \
+                -X POST "$N8N_URL/rest/owner/setup" \
+                -H "Content-Type: application/json" \
+                -d "$(jq -n \
+                  --arg e "$OWNER_EMAIL" \
+                  --arg p "$OWNER_PASSWORD" \
+                  --arg f "$OWNER_FIRST_NAME" \
+                  --arg l "$OWNER_LAST_NAME" \
+                  '{email:$e,firstName:$f,lastName:$l,password:$p}')")
+              echo "[--] Setup HTTP $SETUP_HTTP"
+              if [ "$SETUP_HTTP" = "200" ] || [ "$SETUP_HTTP" = "201" ]; then
+                echo "[OK] Owner créé"
+              else
+                echo "[--] Setup non-2xx (probablement owner déjà existant) : $(cat /tmp/setup_resp | head -c 200)"
+              fi
+
+              # 4) Login avec les credentials du Secret.
+              echo "[--] Login owner..."
+              LOGIN_HTTP=$(curl -s -c /tmp/cookies.txt -o /tmp/login_resp -w "%{http_code}" \
+                -X POST "$N8N_URL/rest/login" \
+                -H "Content-Type: application/json" \
+                -d "$(jq -n \
+                  --arg e "$OWNER_EMAIL" \
+                  --arg p "$OWNER_PASSWORD" \
+                  '{emailOrLdapLoginId:$e,password:$p}')")
+              if [ "$LOGIN_HTTP" != "200" ]; then
+                echo "[KO] Login échec HTTP $LOGIN_HTTP"
+                echo "     Réponse : $(cat /tmp/login_resp | head -c 200)"
+                echo "[--] Les credentials du Secret ne matchent peut-être pas l'owner existant."
+                echo "[--] Renseigner manuellement :"
+                echo "       kubectl patch secret $SECRET_NAME -n $NAMESPACE --type=merge \\"
+                echo "         -p '{\"data\":{\"N8N_API_KEY\":\"BASE64_API_KEY\"}}'"
+                exit 0
+              fi
+              echo "[OK] Login OK"
+
+              # 5) Création clé API.
+              echo "[--] Création clé API '$API_KEY_LABEL'..."
+              KEY_RESP=$(curl -s -b /tmp/cookies.txt \
+                -X POST "$N8N_URL/rest/api-keys" \
+                -H "Content-Type: application/json" \
+                -d "$(jq -n --arg lbl "$API_KEY_LABEL" '{label:$lbl}')")
+              RAW_KEY=$(echo "$KEY_RESP" | jq -r '.data.rawApiKey // .rawApiKey // .data.apiKey // empty')
+              if [ -z "$RAW_KEY" ] || [ "$RAW_KEY" = "null" ]; then
+                echo "[KO] Échec extraction rawApiKey. Réponse : $(echo "$KEY_RESP" | head -c 300)"
+                exit 0
+              fi
+              echo "[OK] Clé API créée (longueur ${#RAW_KEY} char)"
+
+              # 6) Patch Secret K8s avec N8N_API_KEY.
+              KEY_B64=$(printf '%s' "$RAW_KEY" | base64 | tr -d '\n')
+              PATCH=$(jq -n --arg k "$KEY_B64" '{data:{N8N_API_KEY:$k}}')
+              PATCH_HTTP=$(curl -s -o /tmp/patch_resp -w "%{http_code}" --cacert "$CACERT" \
+                -H "Authorization: Bearer $SA_TOKEN" \
+                -H "Content-Type: application/strategic-merge-patch+json" \
+                -X PATCH \
+                "https://kubernetes.default.svc/api/v1/namespaces/$NAMESPACE/secrets/$SECRET_NAME" \
+                -d "$PATCH")
+              if [ "$PATCH_HTTP" = "200" ]; then
+                echo "[OK] Secret $SECRET_NAME mis à jour avec N8N_API_KEY"
+                echo "[--] Auto-provisioning terminé avec succès"
+              else
+                echo "[KO] Patch Secret HTTP $PATCH_HTTP : $(cat /tmp/patch_resp | head -c 200)"
+                exit 0
+              fi
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+{{- end }}

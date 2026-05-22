@@ -1,0 +1,51 @@
+{{- if .Values.provisioning.enabled }}
+# Permissions minimales pour le Job d'auto-provisioning :
+# - get sur le Secret pour lire les credentials owner
+# - patch sur le Secret pour y écrire N8N_API_KEY
+# Scope : un seul Secret (resourceNames), pas tout le namespace.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "n8n.fullname" . }}-provisioner
+  labels:
+    {{- include "n8n.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "n8n.fullname" . }}-provisioner
+  labels:
+    {{- include "n8n.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-9"
+    helm.sh/hook-delete-policy: before-hook-creation
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["{{ include "n8n.fullname" . }}"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "n8n.fullname" . }}-provisioner
+  labels:
+    {{- include "n8n.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-8"
+    helm.sh/hook-delete-policy: before-hook-creation
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "n8n.fullname" . }}-provisioner
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "n8n.fullname" . }}-provisioner
+    namespace: {{ .Release.Namespace }}
+{{- end }}

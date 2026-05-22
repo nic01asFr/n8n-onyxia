@@ -54,6 +54,56 @@
         }
       }
     },
+    "owner": {
+      "type": "object",
+      "title": "Compte propriétaire n8n",
+      "description": "Compte admin de l'instance. Sert au login dans l'UI n8n.",
+      "properties": {
+        "email": {
+          "type": "string",
+          "title": "Email",
+          "description": "Email du compte owner (login UI n8n).",
+          "default": "",
+          "x-onyxia": {
+            "overwriteDefaultWith": "{{ user.email }}"
+          }
+        },
+        "firstName": {
+          "type": "string",
+          "title": "Prénom",
+          "default": "Admin"
+        },
+        "lastName": {
+          "type": "string",
+          "title": "Nom",
+          "default": "n8n"
+        },
+        "password": {
+          "type": "string",
+          "title": "Mot de passe",
+          "description": "Si vide, mot de passe aléatoire généré. Récupérable via kubectl get secret.",
+          "default": ""
+        }
+      }
+    },
+    "provisioning": {
+      "type": "object",
+      "title": "Auto-provisioning",
+      "description": "Job post-install qui crée l'owner et une clé API automatiquement.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "title": "Activer",
+          "description": "Désactiver si l'instance existe déjà avec un owner créé hors chart (sinon le Job échoue gracieusement et la clé doit être renseignée à la main).",
+          "default": true
+        },
+        "apiKeyLabel": {
+          "type": "string",
+          "title": "Label de la clé API n8n",
+          "default": "auto-provisioned"
+        }
+      }
+    },
     "database": {
       "type": "object",
       "title": "Base de données",

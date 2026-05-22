@@ -51,3 +51,28 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 {{- end -}}
 {{- end -}}
+
+{{/* Mot de passe owner — stable entre upgrades via lookup, sinon généré */}}
+{{- define "n8n.ownerPassword" -}}
+{{- if .Values.owner.password -}}
+{{- .Values.owner.password -}}
+{{- else -}}
+{{- $existing := (lookup "v1" "Secret" .Release.Namespace (include "n8n.fullname" .)) -}}
+{{- if and $existing $existing.data (index $existing.data "ownerPassword") -}}
+{{- index $existing.data "ownerPassword" | b64dec -}}
+{{- else -}}
+{{- randAlphaNum 24 -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+  Clé API n8n — récupère la valeur du Secret existant (rempli par le Job),
+  sinon chaîne vide. Ne JAMAIS regénérer ici : c'est le Job qui s'en charge.
+*/}}
+{{- define "n8n.apiKey" -}}
+{{- $existing := (lookup "v1" "Secret" .Release.Namespace (include "n8n.fullname" .)) -}}
+{{- if and $existing $existing.data (index $existing.data "N8N_API_KEY") -}}
+{{- index $existing.data "N8N_API_KEY" | b64dec -}}
+{{- end -}}
+{{- end -}}

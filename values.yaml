@@ -47,6 +47,28 @@ n8n:
   # Politique d'exécution des workflows : "regular" (par défaut) ou "queue" (avec Redis).
   executionsMode: regular
 
+# ─── Owner par défaut + auto-provisioning ────────────────────────────────────
+# Si provisioning.enabled = true, un Job post-install :
+#   1. Crée le compte owner si l'instance est vierge
+#   2. Se logge avec les credentials du Secret
+#   3. Génère une clé API n8n nommée "auto-provisioned"
+#   4. Patch le Secret K8s avec la clé pour consommation par n8n-mcp
+# Idempotent : si la clé existe déjà, le Job est no-op.
+owner:
+  email: ""              # requis pour login UI
+  firstName: "Admin"
+  lastName: "n8n"
+  password: ""           # auto-généré si vide (stable entre upgrades via lookup)
+
+provisioning:
+  enabled: true
+  apiKeyLabel: "auto-provisioned"
+  # Image utilisée par le Job (besoin de curl + jq + busybox base64).
+  image:
+    repository: alpine
+    tag: "3.20"
+    pullPolicy: IfNotPresent
+
 # ─── Base de données ─────────────────────────────────────────────────────────
 database:
   # sqlite : local sur PVC, mono-pod, suffit < 50 workflows simultanés.
