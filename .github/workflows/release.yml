@@ -1,0 +1,112 @@
+name: Release Helm Charts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'charts/**'
+      - 'scripts/**'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.0
+
+      - name: Package charts
+        run: |
+          mkdir -p .pages
+          for chart in charts/*/; do
+            chart_name=$(basename "$chart")
+            echo "Packaging $chart_name..."
+            helm dependency update "$chart" || true
+            helm package "$chart" -d .pages
+          done
+
+      - name: Generate Helm repo index
+        run: |
+          # Récupérer l'index précédent depuis gh-pages pour préserver l'historique
+          git fetch origin gh-pages || true
+          if git show-ref --verify --quiet refs/remotes/origin/gh-pages; then
+            git show origin/gh-pages:index.yaml > .pages/index-old.yaml 2>/dev/null || true
+          fi
+          if [[ -f .pages/index-old.yaml ]]; then
+            helm repo index .pages --url https://nic01asfr.github.io/n8n-onyxia --merge .pages/index-old.yaml
+            rm .pages/index-old.yaml
+          else
+            helm repo index .pages --url https://nic01asfr.github.io/n8n-onyxia
+          fi
+
+      - name: Copy install script + values examples
+        run: |
+          cp scripts/install.sh .pages/install.sh
+          chmod +x .pages/install.sh
+          cp charts/n8n/examples/values-sspcloud.yaml .pages/values-sspcloud.yaml
+          cp charts/n8n-mcp/examples/values-sspcloud.yaml .pages/values-sspcloud-mcp.yaml
+
+      - name: Landing page
+        run: |
+          cat > .pages/index.html <<'EOF'
+          <!doctype html>
+          <html lang="fr">
+          <head>
+            <meta charset="utf-8">
+            <title>n8n-onyxia · Helm charts pour SSPCloud</title>
+            <style>
+              body { font-family: -apple-system, sans-serif; max-width: 760px; margin: 2em auto; padding: 0 1em; line-height: 1.5; }
+              code, pre { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-size: 0.95em; }
+              pre { padding: 1em; overflow-x: auto; }
+              h1 { border-bottom: 2px solid #eee; padding-bottom: .3em; }
+              a { color: #0366d6; }
+            </style>
+          </head>
+          <body>
+            <h1>n8n-onyxia</h1>
+            <p>Charts Helm pour déployer <strong>n8n</strong> + serveur <strong>MCP</strong> dans un namespace SSPCloud Onyxia.</p>
+
+            <h2>Installation rapide (depuis un terminal Jupyter SSPCloud)</h2>
+            <pre>curl -sL https://nic01asfr.github.io/n8n-onyxia/install.sh | bash</pre>
+
+            <h2>Installation via Helm (utilisateur avancé)</h2>
+            <pre>helm repo add nic01asfr https://nic01asfr.github.io/n8n-onyxia
+          helm repo update
+          helm install n8n nic01asfr/n8n \
+            --set owner.email=mon@email.fr \
+            --set n8n.host=user-MONIDEP-n8n.user.lab.sspcloud.fr</pre>
+
+            <h2>Intégration au catalogue Onyxia</h2>
+            <p>SSPCloud → Mon compte → Services → <em>Sources des services personnalisés</em> → ajouter :</p>
+            <pre>https://nic01asfr.github.io/n8n-onyxia</pre>
+            <p>Les charts apparaissent ensuite dans le catalogue, lançables en un clic.</p>
+
+            <h2>Ressources</h2>
+            <ul>
+              <li><a href="index.yaml">index.yaml</a> · index Helm</li>
+              <li><a href="install.sh">install.sh</a> · script d'installation</li>
+              <li><a href="https://github.com/nic01asFr/n8n-onyxia">Repo GitHub</a></li>
+            </ul>
+          </body>
+          </html>
+          EOF
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: .pages
+          publish_branch: gh-pages
+          keep_files: true
+          commit_message: "chore: publish charts (${{ github.sha }})"

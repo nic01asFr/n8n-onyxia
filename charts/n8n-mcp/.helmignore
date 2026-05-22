@@ -1,0 +1,15 @@
+.git/
+.gitignore
+.vscode/
+.idea/
+*.swp
+*.bak
+*.tmp
+*.orig
+*~
+.DS_Store
+test/
+tests/
+ci/
+docs/
+*.tgz

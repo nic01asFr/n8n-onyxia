@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "n8n-mcp.fullname" . }}
+  labels:
+    {{- include "n8n-mcp.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "n8n-mcp.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "n8n-mcp.selectorLabels" . | nindent 8 }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.securityContext | nindent 8 }}
+      containers:
+        - name: n8n-mcp
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.mcp.port }}
+              protocol: TCP
+          env:
+            # ─── Mode HTTP streamable ─────────────────────────────────────
+            - name: MCP_MODE
+              value: "http"
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: {{ .Values.mcp.port | quote }}
+            - name: HOST
+              value: "0.0.0.0"
+            # ─── Logs ────────────────────────────────────────────────────
+            - name: LOG_LEVEL
+              value: {{ .Values.mcp.logLevel | quote }}
+            # ─── URL publique (derrière ingress TLS) ─────────────────────
+            - name: BASE_URL
+              value: "https://{{ .Values.mcp.host }}"
+            - name: PUBLIC_URL
+              value: "https://{{ .Values.mcp.host }}"
+            - name: TRUST_PROXY
+              value: {{ .Values.mcp.trustProxy | quote }}
+            - name: CORS_ORIGIN
+              value: {{ .Values.mcp.corsOrigin | quote }}
+            # ─── Auth Bearer (Secret généré par ce chart) ────────────────
+            - name: AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "n8n-mcp.fullname" . }}
+                  key: AUTH_TOKEN
+            # ─── Intégration n8n API ─────────────────────────────────────
+            - name: N8N_API_URL
+              value: {{ .Values.n8n.apiUrl | quote }}
+            - name: N8N_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.n8nApiSecret.name | quote }}
+                  key: {{ .Values.n8nApiSecret.key | quote }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- if .Values.probes.liveness.enabled }}
+          livenessProbe:
+            {{- if eq .Values.probes.liveness.type "tcpSocket" }}
+            tcpSocket:
+              port: http
+            {{- else }}
+            httpGet:
+              path: /health
+              port: http
+            {{- end }}
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+          {{- end }}
+          {{- if .Values.probes.readiness.enabled }}
+          readinessProbe:
+            {{- if eq .Values.probes.readiness.type "tcpSocket" }}
+            tcpSocket:
+              port: http
+            {{- else }}
+            httpGet:
+              path: /health
+              port: http
+            {{- end }}
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+          {{- end }}

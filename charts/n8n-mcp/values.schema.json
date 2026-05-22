@@ -1,0 +1,94 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "mcp": {
+      "type": "object",
+      "title": "Configuration MCP",
+      "description": "Paramètres du serveur n8n-mcp",
+      "properties": {
+        "host": {
+          "type": "string",
+          "title": "Domaine public",
+          "description": "Hostname public du serveur MCP (TLS auto).",
+          "default": "",
+          "x-onyxia": {
+            "overwriteDefaultWith": "n8n-mcp-{{k8s.randomSubdomain}}.user-{{user.idep}}.lab.sspcloud.fr"
+          }
+        },
+        "logLevel": {
+          "type": "string",
+          "title": "Niveau de log",
+          "default": "info",
+          "enum": ["error", "warn", "info", "debug"]
+        },
+        "corsOrigin": {
+          "type": "string",
+          "title": "Origines CORS",
+          "description": "* = tous. Sinon liste séparée par virgules.",
+          "default": "*"
+        }
+      }
+    },
+    "n8n": {
+      "type": "object",
+      "title": "Intégration n8n",
+      "properties": {
+        "apiUrl": {
+          "type": "string",
+          "title": "URL de l'API n8n",
+          "description": "Préférer l'URL interne au cluster (svc) pour éviter le TLS + latence externe.",
+          "default": "",
+          "x-onyxia": {
+            "overwriteDefaultWith": "http://n8n.user-{{user.idep}}.svc.cluster.local:5678"
+          }
+        }
+      }
+    },
+    "n8nApiSecret": {
+      "type": "object",
+      "title": "Secret n8n (clé API)",
+      "description": "Le chart MCP lit N8N_API_KEY depuis ce Secret (généré par le chart n8n-onyxia).",
+      "properties": {
+        "name": {
+          "type": "string",
+          "title": "Nom du Secret n8n",
+          "default": "n8n"
+        },
+        "key": {
+          "type": "string",
+          "title": "Clé dans le Secret",
+          "default": "N8N_API_KEY"
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "title": "Ressources",
+      "properties": {
+        "requests": {
+          "type": "object",
+          "properties": {
+            "cpu": { "type": "string", "title": "CPU", "default": "100m" },
+            "memory": { "type": "string", "title": "RAM", "default": "256Mi" }
+          }
+        },
+        "limits": {
+          "type": "object",
+          "properties": {
+            "cpu": { "type": "string", "title": "CPU max", "default": "1000m" },
+            "memory": { "type": "string", "title": "RAM max", "default": "1Gi" }
+          }
+        }
+      }
+    },
+    "replicaCount": {
+      "type": "integer",
+      "title": "Nombre de répliques",
+      "description": "MCP stateless = scalable horizontalement.",
+      "default": 1,
+      "minimum": 1,
+      "maximum": 10
+    }
+  }
+}

@@ -1,7 +1,11 @@
 *.tgz
-charts/
+# Ignorer les sub-charts générés par `helm dependency update`,
+# pas le dossier charts/ racine de ce mono-repo.
+charts/*/charts/
 .idea/
 .vscode/
 *.swp
 *.bak
 .DS_Store
+.tmp-pages/
+.pages/

@@ -1,0 +1,109 @@
+# Valeurs par défaut du chart n8n-mcp-onyxia.
+# Le serveur MCP est stateless : pas de PVC, scalable horizontalement.
+
+# ─── Image MCP ───────────────────────────────────────────────────────────────
+image:
+  repository: ghcr.io/czlonkowski/n8n-mcp
+  tag: "latest"
+  pullPolicy: Always
+
+# ─── Identité Onyxia ─────────────────────────────────────────────────────────
+onyxia:
+  friendlyName: "n8n-mcp"
+  chartIconUrl: https://n8n.io/favicon.ico
+
+git:
+  name: ""
+  email: ""
+
+vault:
+  token: ""
+  url: ""
+  secret: ""
+
+userPreferences:
+  language: fr
+
+# ─── Configuration MCP ───────────────────────────────────────────────────────
+mcp:
+  # Hostname public (surchargé par Onyxia, cf. values.schema.json)
+  host: ""
+  port: 3000
+  # Niveau de log : error | warn | info | debug
+  logLevel: info
+  # Origines CORS autorisées. "*" = tout (utilisable depuis n'importe quel client MCP).
+  corsOrigin: "*"
+  # Nombre de hops proxy (ingress nginx = 1, ingress onyxia = 1 aussi)
+  trustProxy: 1
+
+# ─── Intégration n8n ─────────────────────────────────────────────────────────
+# L'URL n8n peut être :
+#   - interne au cluster :  http://n8n.user-{idep}.svc.cluster.local:5678
+#   - publique :            https://user-{idep}-n8n.user.lab.sspcloud.fr
+# Privilégier l'URL interne (latence + sécurité + pas besoin de TLS).
+n8n:
+  apiUrl: ""
+
+# ─── Bearer token MCP (auto-géré) ────────────────────────────────────────────
+# Le chart crée son propre Secret avec un AUTH_TOKEN aléatoire stable
+# (helper lookup → conservé entre upgrades). Valeur explicite possible.
+mcpAuth:
+  token: ""  # vide = généré aléatoirement (48 char), stable au prochain upgrade
+
+# ─── Clé API n8n (depuis le Secret du chart n8n-onyxia) ──────────────────────
+# Le chart MCP référence le Secret du chart n8n (qui auto-provisionne la clé).
+# Override possible si l'instance n8n n'est pas dans ce cluster.
+n8nApiSecret:
+  name: n8n          # Secret généré par le chart n8n-onyxia
+  key: N8N_API_KEY
+
+# ─── Sécurité pod (contraintes SSPCloud) ─────────────────────────────────────
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+# ─── Ressources ──────────────────────────────────────────────────────────────
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+# ─── Réplique (le MCP est stateless, scalable horizontalement) ───────────────
+replicaCount: 1
+
+# ─── Service ─────────────────────────────────────────────────────────────────
+service:
+  type: ClusterIP
+  port: 3000
+
+# ─── Ingress ─────────────────────────────────────────────────────────────────
+ingress:
+  enabled: true
+  className: nginx
+  tls: true
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+
+# ─── Probes ──────────────────────────────────────────────────────────────────
+# /health requiert le Bearer token → on désactive la sonde HTTP par défaut,
+# en utilisant un simple tcpSocket à la place. Override possible.
+probes:
+  liveness:
+    enabled: true
+    type: tcpSocket
+    initialDelaySeconds: 30
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readiness:
+    enabled: true
+    type: tcpSocket
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3

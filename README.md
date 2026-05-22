@@ -1,149 +1,120 @@
 # n8n-onyxia
 
-Chart Helm pour déployer **n8n** (automatisation de workflows) dans une instance Onyxia SSPCloud, avec :
+Charts Helm pour déployer **n8n** (automatisation de workflows) et son **serveur MCP** (Model Context Protocol pour LLM) dans un namespace SSPCloud Onyxia. Auto-provisionning de l'owner + clé API, intégration TLS native, persistance PVC.
 
-- Persistance PVC (workflows, credentials, SQLite) survivant aux redémarrages
-- Ingress public TLS auto (cert-manager) — webhooks externes activés
-- Clé de chiffrement stable entre upgrades (préservée via `lookup` du Secret existant)
-- Formulaire de configuration intégré au catalogue Onyxia (`values.schema.json`)
-- Choix SQLite (mono-pod, simple) ou PostgreSQL externe (scalable) au déploiement
-- Conforme aux contraintes SSPCloud : `runAsNonRoot`, UID 1000, pas de root, pas de hostPath
+## Quickstart — une commande
 
-## Structure
+Depuis un terminal de pod Jupyter SSPCloud (qui a déjà `kubectl` + `helm` configurés) :
+
+```bash
+curl -sL https://nic01asfr.github.io/n8n-onyxia/install.sh | bash
+```
+
+Le script :
+1. Détecte ton namespace SSPCloud
+2. Demande ton email (sinon récupéré depuis `git config --global user.email`)
+3. Installe **n8n** + **n8n-mcp** dans le namespace
+4. Attend que le Job de provisioning crée automatiquement la clé API n8n
+5. Affiche un récap avec URLs + tokens prêts à coller dans Claude Code/Desktop
+
+Durée : ~2 minutes. Idempotent (re-exécution = upgrade).
+
+## Méthodes alternatives
+
+### Helm direct (utilisateur avancé)
+
+```bash
+helm repo add nic01asfr https://nic01asfr.github.io/n8n-onyxia
+helm repo update
+helm install n8n nic01asfr/n8n \
+  -f https://nic01asfr.github.io/n8n-onyxia/values-sspcloud.yaml \
+  --set owner.email=mon@email.fr \
+  --set n8n.host=user-MONIDEP-n8n.user.lab.sspcloud.fr
+```
+
+### Catalogue Onyxia (zéro CLI)
+
+SSPCloud → **Mon compte** → **Services** → *Sources des services personnalisés* → ajouter :
+```
+https://nic01asfr.github.io/n8n-onyxia
+```
+Les charts apparaissent ensuite dans ton catalogue, lançables avec un formulaire et un clic.
+
+## Structure du repo
 
 ```
 n8n-onyxia/
-├── Chart.yaml              # Métadonnées du chart
-├── values.yaml             # Valeurs par défaut (commentées en français)
-├── values.schema.json      # Schéma du formulaire Onyxia
-├── templates/
-│   ├── _helpers.tpl        # Helpers Helm + résolution stable encryptionKey
-│   ├── deployment.yaml     # Pod n8n avec env complet
-│   ├── service.yaml        # ClusterIP port 5678
-│   ├── ingress.yaml        # Ingress nginx + TLS Let's Encrypt
-│   ├── pvc.yaml            # PVC keep-on-uninstall pour /home/node/.n8n
-│   ├── secret.yaml         # N8N_ENCRYPTION_KEY + PG password (keep)
-│   └── NOTES.txt           # Affiché après helm install
-├── .helmignore
-└── .gitignore
+├── charts/
+│   ├── n8n/              # Chart Helm n8n (UI + workflows + auto-provisioning)
+│   └── n8n-mcp/          # Chart Helm serveur MCP (czlonkowski/n8n-mcp)
+├── scripts/
+│   └── install.sh        # Orchestrateur d'installation one-liner
+└── .github/workflows/
+    └── release.yml       # CI : package + publie sur GitHub Pages
 ```
 
-## Déploiement dans Onyxia SSPCloud
+## Ce qui est inclus
 
-### 1 — Publier le chart sur un dépôt Helm accessible
+### Chart `n8n`
+- Image officielle `n8nio/n8n:1.80.3`
+- Persistance PVC (workflows, credentials, SQLite ou PostgreSQL)
+- Ingress TLS auto (Let's Encrypt via ingress controller SSPCloud)
+- **Job post-install** qui crée l'owner + une clé API automatiquement
+- Secrets (encryptionKey, ownerPassword, N8N_API_KEY) stables entre upgrades
+- Webhooks externes activés sur l'URL publique
 
-Plusieurs options :
+Voir [charts/n8n/README.md](charts/n8n/README.md).
 
-#### A. GitHub Pages (le plus simple)
+### Chart `n8n-mcp`
+- Image `ghcr.io/czlonkowski/n8n-mcp:latest`
+- Mode HTTP streamable avec auth Bearer
+- Token auto-généré stable entre upgrades
+- Lit la clé API n8n depuis le Secret du chart n8n (auto-provisioning chaîné)
+- 39 tools MCP pour interroger, créer, valider, débugger les workflows n8n depuis un LLM
 
-```powershell
-# Depuis ce repo
-helm package .
-helm repo index . --url https://<ton-user>.github.io/n8n-onyxia
-# Pousser tout sur la branche gh-pages
-```
+Voir [charts/n8n-mcp/README.md](charts/n8n-mcp/README.md).
 
-#### B. Repo Helm local pour test
+## Limites connues
 
-```powershell
-helm package .
-# Servir le dossier via n'importe quel HTTP statique (Caddy, nginx, python -m http.server)
-helm repo index . --url http://localhost:8000
-```
+| Catégorie | Limite |
+|---|---|
+| Scaling | Mono-pod (SQLite + PVC RWO). Pour multi-réplique : passer en PostgreSQL + mode queue (non fourni). |
+| Sécurité | Bearer token MCP unique, pas de multi-user. Sécurité = ne pas leak le token. |
+| OAuth | Callback URL fixe → changer le hostname casse les credentials OAuth stockées. |
+| Backup | Pas de backup auto. À ajouter via CronJob → S3 SSPCloud. |
+| N8N_ENCRYPTION_KEY | Si perdue, tous les credentials sont irrécupérables. Sauvegarde obligatoire. |
+| IP sortante | Pas de IP publique fixe (NAT partagé SSPCloud). Services externes exigeant IP allowlist : passer par proxy. |
+| Port 25 SMTP | Bloqué (standard cloud). Utiliser 587/465. |
+| Client Claude Desktop | Pas de support HTTP MCP natif avant version récente → bridge `mcp-remote` requis. |
 
-### 2 — Ajouter le dépôt dans Onyxia
+Voir [docs/limites.md](docs/limites.md) pour la liste exhaustive.
 
-1. Onyxia → **Mon compte** → onglet **Services**
-2. Section **« Sources des services personnalisés »**
-3. Coller l'URL du repo Helm publié (qui sert `index.yaml`)
-4. Recharger le catalogue : n8n apparaît dans la liste
-
-### 3 — Lancer le service
-
-1. Catalogue → **n8n** → **Lancer**
-2. Le formulaire propose :
-   - Domaine public (par défaut `n8n-{random}.user-{idep}.lab.sspcloud.fr`)
-   - Fuseau horaire, niveau de log
-   - Base de données (SQLite / PostgreSQL)
-   - Taille du PVC, ressources CPU/RAM
-3. Cliquer **Lancer** → attendre 1-2 min que le pod soit prêt
-4. Ouvrir l'URL → créer le compte owner
-
-## Configuration locale (hors Onyxia)
-
-Pour tester en CLI sur un cluster K8s arbitraire :
+## Désinstallation
 
 ```bash
-helm install mon-n8n . \
-  --set n8n.host=n8n.mon-domaine.fr \
-  --set persistence.size=10Gi \
-  --namespace n8n --create-namespace
+helm uninstall n8n-mcp -n user-MONIDEP
+helm uninstall n8n -n user-MONIDEP
+
+# Les Secrets et PVC sont conservés (helm.sh/resource-policy: keep).
+# Pour TOUT supprimer :
+kubectl delete pvc n8n -n user-MONIDEP
+kubectl delete secret n8n n8n-mcp -n user-MONIDEP
 ```
 
-Pour passer en PostgreSQL :
+## Contribuer
 
+Le repo est un mono-repo Helm. Les charts sont versionnés indépendamment via `charts/<chart>/Chart.yaml`. À chaque push sur `main` qui touche `charts/`, un workflow GitHub Actions repackage les charts et publie sur la branche `gh-pages`.
+
+Pour tester localement :
 ```bash
-helm install mon-n8n . \
-  --set n8n.host=n8n.mon-domaine.fr \
-  --set database.type=postgresdb \
-  --set database.postgres.host=postgres.svc.cluster.local \
-  --set database.postgres.password='supersecret' \
-  --namespace n8n
+git clone https://github.com/nic01asFr/n8n-onyxia.git
+cd n8n-onyxia
+helm lint charts/n8n
+helm template test charts/n8n --set owner.email=test@example.com --set n8n.host=test.local
 ```
-
-## Sauvegarde / restauration
-
-### Sauvegarder la clé de chiffrement (CRITIQUE)
-
-```bash
-kubectl get secret mon-n8n-n8n \
-  -n n8n \
-  -o jsonpath='{.data.encryptionKey}' | base64 -d > n8n-encryption-key.txt
-# À stocker hors-cluster (gestionnaire de mots de passe, Vault personnel)
-```
-
-### Sauvegarder les workflows (SQLite)
-
-```bash
-kubectl exec -n n8n deploy/mon-n8n-n8n -- \
-  tar czf - -C /home/node/.n8n . > n8n-backup-$(date +%F).tar.gz
-```
-
-### Restaurer
-
-```bash
-# 1. Recréer le secret avec la clé sauvegardée
-kubectl create secret generic mon-n8n-n8n \
-  --from-literal=encryptionKey="$(cat n8n-encryption-key.txt)" \
-  -n n8n
-
-# 2. helm install (le secret existant sera réutilisé via lookup)
-# 3. Restaurer les fichiers dans le PVC
-kubectl cp n8n-backup.tar.gz n8n/mon-n8n-n8n-xxxxx:/tmp/
-kubectl exec -n n8n deploy/mon-n8n-n8n -- \
-  tar xzf /tmp/n8n-backup.tar.gz -C /home/node/.n8n
-kubectl rollout restart deploy/mon-n8n-n8n -n n8n
-```
-
-## Limitations connues
-
-- **Mono-pod uniquement** (réplique = 1) car PVC RWO + SQLite. Pour multi-réplique :
-  passer en PostgreSQL + mode `queue` (Redis externe non géré par ce chart).
-- **Premier démarrage long** (~60 s) le temps que SQLite s'initialise et que n8n
-  télécharge les nodes du registre.
-- **Webhooks** nécessitent que le hostname soit accessible depuis Internet. Sur
-  SSPCloud le wildcard `*.lab.sspcloud.fr` est public — OK.
-- **Pas d'OIDC Keycloak SSPCloud** : l'auth OIDC est dans n8n Enterprise (payant).
-  Auth gérée par n8n built-in (email/password owner).
-
-## Roadmap
-
-- [ ] Mode `queue` avec Redis (sub-chart bitnami/redis)
-- [ ] OAuth2 Proxy sidecar pour SSO Keycloak SSPCloud
-- [ ] Init-container pour seeder un workflow d'exemple
-- [ ] CronJob de backup automatique vers S3 SSPCloud
 
 ## Licence
 
-Chart : MIT
-n8n : [Sustainable Use License](https://docs.n8n.io/sustainable-use-license/)
+Charts : MIT  
+n8n : [Sustainable Use License](https://docs.n8n.io/sustainable-use-license/)  
+n8n-mcp : MIT (czlonkowski)

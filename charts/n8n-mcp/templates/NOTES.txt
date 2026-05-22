@@ -1,0 +1,38 @@
+
+╭──────────────────────────────────────────────────────────────────────╮
+│  n8n-mcp est déployé sur SSPCloud Onyxia.                            │
+╰──────────────────────────────────────────────────────────────────────╯
+
+Endpoint MCP :
+  POST https://{{ .Values.mcp.host }}/mcp
+  Header : Authorization: Bearer $AUTH_TOKEN
+
+Healthcheck (nécessite le Bearer) :
+  curl -H "Authorization: Bearer $AUTH_TOKEN" \
+       https://{{ .Values.mcp.host }}/health
+
+Récupérer le token MCP (généré et stable entre upgrades) :
+  kubectl get secret {{ include "n8n-mcp.fullname" . }} \
+    -o jsonpath='{.data.AUTH_TOKEN}' | base64 -d
+
+Récupérer la clé n8n API (provisionnée par le chart n8n-onyxia) :
+  kubectl get secret {{ .Values.n8nApiSecret.name }} \
+    -o jsonpath='{.data.{{ .Values.n8nApiSecret.key }}}' | base64 -d
+
+Connexion depuis Claude Desktop / Claude Code (config MCP) :
+  {
+    "mcpServers": {
+      "n8n": {
+        "transport": "http",
+        "url": "https://{{ .Values.mcp.host }}/mcp",
+        "headers": {
+          "Authorization": "Bearer <AUTH_TOKEN>"
+        }
+      }
+    }
+  }
+
+Logs en temps réel :
+  kubectl logs -l app.kubernetes.io/instance={{ .Release.Name }} -f
+
+n8n API ciblée : {{ .Values.n8n.apiUrl }}

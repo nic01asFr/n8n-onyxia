@@ -1,0 +1,23 @@
+apiVersion: v2
+name: n8n-mcp
+description: |
+  Serveur MCP (Model Context Protocol) pour n8n — czlonkowski/n8n-mcp.
+  Mode HTTP streamable, auth Bearer token, intégration n8n API complète.
+  Packagé pour le catalogue Onyxia SSPCloud.
+type: application
+version: 0.1.0
+appVersion: "latest"
+icon: https://n8n.io/favicon.ico
+keywords:
+  - mcp
+  - n8n
+  - llm
+  - automation
+  - sspcloud
+  - onyxia
+home: https://github.com/czlonkowski/n8n-mcp
+sources:
+  - https://github.com/czlonkowski/n8n-mcp
+maintainers:
+  - name: Nicolas LAVAL
+    email: laval.nicolas13@gmail.com
