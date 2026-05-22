@@ -61,9 +61,14 @@ owner:
   password: ""           # auto-généré si vide (stable entre upgrades via lookup)
 
 provisioning:
-  enabled: true
+  # IN-CLUSTER Job desactive par defaut : la plupart des clusters managed
+  # (dont SSPCloud) refusent create/delete sur Role dans un namespace user.
+  # Le script install.sh fait le provisioning depuis le client (kubectl du user)
+  # qui a tous les droits patch Secret.
+  # Mettre a true uniquement sur clusters qui autorisent les Roles dans le namespace.
+  enabled: false
   apiKeyLabel: "auto-provisioned"
-  # Image utilisée par le Job (besoin de curl + jq + busybox base64).
+  # Image utilisee par le Job (besoin de curl + jq + busybox base64).
   image:
     repository: alpine
     tag: "3.20"

@@ -86,29 +86,110 @@ HELM_ARGS=(
 helm upgrade --install "$N8N_RELEASE" nic01asfr/n8n "${HELM_ARGS[@]}" --wait --timeout 5m
 ok "n8n déployé"
 
-# ─── 6. Attendre le Job de provisioning ──────────────────────────────────────
-log "Attente du Job de provisioning (création clé API automatique)..."
-JOB_NAME="n8n-provisioning"
-TIMEOUT_SEC=180
-ELAPSED=0
-while [[ $ELAPSED -lt $TIMEOUT_SEC ]]; do
-  STATUS=$(kubectl -n "$NS" get job "$JOB_NAME" -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}' 2>/dev/null || echo "")
-  if [[ "$STATUS" == "True" ]]; then
-    ok "Job de provisioning terminé"
-    break
+# ─── 6. Auto-provisioning côté client (kubectl du user) ──────────────────────
+# Pourquoi côté client : SSPCloud refuse create/delete sur Role dans le namespace
+# user → un Job in-cluster avec RBAC custom ne passe pas. Le script fait à la place
+# le owner-setup + login + create-api-key + patch-Secret depuis ta machine.
+#
+# Prérequis : curl + jq (installés par défaut dans tous les pods Jupyter SSPCloud).
+
+PROVISION_TIMEOUT="${PROVISION_TIMEOUT:-180}"
+
+provision_n8n_api_key() {
+  command -v curl >/dev/null || { warn "curl introuvable, skip provisioning"; return 0; }
+  command -v jq   >/dev/null || { warn "jq introuvable, skip provisioning"; return 0; }
+
+  # Skip si la clé existe déjà.
+  local existing
+  existing=$(kubectl -n "$NS" get secret n8n -o jsonpath='{.data.N8N_API_KEY}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+  if [[ ${#existing} -gt 20 ]]; then
+    ok "N8N_API_KEY déjà présente (longueur ${#existing}). Skip provisioning."
+    return 0
   fi
-  # Le Job a pu être déjà supprimé (hook-succeeded delete policy) → on vérifie la clé directement.
-  KEY=$(kubectl -n "$NS" get secret n8n -o jsonpath='{.data.N8N_API_KEY}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
-  if [[ ${#KEY} -gt 20 ]]; then
-    ok "Clé API n8n présente dans le Secret (longueur ${#KEY})"
-    break
+
+  log "Attente n8n /healthz public..."
+  local n8n_pub="https://$N8N_HOST"
+  local i ready=0
+  for i in $(seq 1 60); do
+    if curl -sf "$n8n_pub/healthz" >/dev/null 2>&1; then
+      ready=1; break
+    fi
+    sleep 3
+  done
+  if [[ $ready -ne 1 ]]; then
+    warn "n8n pas joignable sur $n8n_pub après 3 min. Skip provisioning — la clé API devra être créée manuellement via l'UI."
+    return 0
   fi
-  sleep 3
-  ELAPSED=$((ELAPSED + 3))
-done
-if [[ $ELAPSED -ge $TIMEOUT_SEC ]]; then
-  warn "Timeout attente Job. La clé API peut être absente — vérifier les logs : kubectl logs -l app.kubernetes.io/component=provisioner"
-fi
+  ok "n8n joignable"
+
+  # Lire les credentials owner du Secret (créés par le chart).
+  local owner_email owner_password owner_first owner_last
+  owner_email=$(kubectl -n "$NS" get secret n8n -o jsonpath='{.data.ownerEmail}' | base64 -d)
+  owner_password=$(kubectl -n "$NS" get secret n8n -o jsonpath='{.data.ownerPassword}' | base64 -d)
+  owner_first=$(kubectl -n "$NS" get secret n8n -o jsonpath='{.data.ownerFirstName}' | base64 -d)
+  owner_last=$(kubectl -n "$NS" get secret n8n -o jsonpath='{.data.ownerLastName}' | base64 -d)
+
+  # Tentative setup owner. 200/201 = succès. 400 = déjà setup (OK on continue).
+  log "Setup owner..."
+  local setup_http setup_body
+  setup_body=$(jq -n --arg e "$owner_email" --arg p "$owner_password" --arg f "$owner_first" --arg l "$owner_last" \
+    '{email:$e,firstName:$f,lastName:$l,password:$p}')
+  setup_http=$(curl -s -o /tmp/n8n-setup.json -w "%{http_code}" \
+    -X POST "$n8n_pub/rest/owner/setup" \
+    -H "Content-Type: application/json" \
+    -d "$setup_body")
+  if [[ "$setup_http" =~ ^20[01]$ ]]; then
+    ok "Owner créé"
+  else
+    log "Setup HTTP $setup_http (probable owner déjà existant)"
+  fi
+
+  # Login avec les credentials du Secret.
+  log "Login..."
+  local login_http login_body
+  login_body=$(jq -n --arg e "$owner_email" --arg p "$owner_password" \
+    '{emailOrLdapLoginId:$e,password:$p}')
+  login_http=$(curl -s -c /tmp/n8n-cookies.txt -o /tmp/n8n-login.json -w "%{http_code}" \
+    -X POST "$n8n_pub/rest/login" \
+    -H "Content-Type: application/json" \
+    -d "$login_body")
+  if [[ "$login_http" != "200" ]]; then
+    warn "Login échec HTTP $login_http : $(head -c 200 /tmp/n8n-login.json)"
+    warn "Les credentials du Secret ne matchent pas l'owner existant."
+    warn "Soit l'owner a été setup via l'UI avec un autre email/password,"
+    warn "soit créer la clé manuellement dans l'UI puis :"
+    warn "  kubectl -n $NS patch secret n8n --type=merge -p '{\"data\":{\"N8N_API_KEY\":\"<b64 clé>\"}}'"
+    return 0
+  fi
+  ok "Login OK"
+
+  # Création clé API.
+  log "Création clé API..."
+  local key_body raw_key
+  key_body=$(jq -n '{label:"auto-provisioned"}')
+  raw_key=$(curl -s -b /tmp/n8n-cookies.txt \
+    -X POST "$n8n_pub/rest/api-keys" \
+    -H "Content-Type: application/json" \
+    -d "$key_body" \
+    | jq -r '.data.rawApiKey // .rawApiKey // empty')
+  if [[ -z "$raw_key" ]] || [[ "$raw_key" == "null" ]]; then
+    warn "Échec extraction rawApiKey. La clé devra être créée manuellement."
+    return 0
+  fi
+  ok "Clé API créée"
+
+  # Patch Secret K8s avec la clé.
+  local key_b64
+  key_b64=$(printf '%s' "$raw_key" | base64 | tr -d '\n')
+  kubectl -n "$NS" patch secret n8n --type=merge \
+    -p "$(jq -n --arg k "$key_b64" '{data:{N8N_API_KEY:$k}}')" >/dev/null
+  ok "Secret n8n patché avec N8N_API_KEY"
+
+  # Cleanup
+  rm -f /tmp/n8n-setup.json /tmp/n8n-login.json /tmp/n8n-cookies.txt
+}
+
+provision_n8n_api_key
 
 # ─── 7. Install n8n-mcp (optionnel) ──────────────────────────────────────────
 if [[ "${SKIP_MCP:-false}" != "true" ]]; then
