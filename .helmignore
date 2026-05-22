@@ -1,0 +1,17 @@
+# Modèles Helm — fichiers à exclure du paquet
+.git/
+.gitignore
+.vscode/
+.idea/
+*.swp
+*.bak
+*.tmp
+*.orig
+*~
+.DS_Store
+README.md.bak
+test/
+tests/
+ci/
+docs/
+*.tgz

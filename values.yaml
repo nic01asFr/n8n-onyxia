@@ -1,0 +1,117 @@
+# Valeurs par défaut du chart n8n-onyxia.
+# Surchargées via le formulaire Onyxia (values.schema.json) ou --set en CLI.
+
+# ─── Image n8n ───────────────────────────────────────────────────────────────
+image:
+  repository: docker.n8n.io/n8nio/n8n
+  tag: "1.80.3"
+  pullPolicy: IfNotPresent
+
+# ─── Identité Onyxia ─────────────────────────────────────────────────────────
+# Ces blocs sont remplis automatiquement par Onyxia lors du lancement.
+onyxia:
+  friendlyName: "n8n"
+  chartIconUrl: https://n8n.io/favicon.ico
+
+git:
+  name: ""
+  email: ""
+
+vault:
+  token: ""
+  url: ""
+  secret: ""
+
+s3:
+  enabled: false
+
+userPreferences:
+  language: fr
+
+# ─── Configuration n8n ───────────────────────────────────────────────────────
+n8n:
+  # Hostname public, surchargé par Onyxia (cf. values.schema.json).
+  host: ""
+  port: 5678
+  protocol: https
+  timezone: Europe/Paris
+  logLevel: info
+  # Chiffrement des credentials. Auto-généré si vide. À sauvegarder !
+  encryptionKey: ""
+  # Anti-télémétrie n8n.
+  diagnostics: false
+  versionNotifications: false
+  personalization: false
+  # Catalogue de templates n8n (lecture seule, depuis n8n.io).
+  templates: true
+  # Politique d'exécution des workflows : "regular" (par défaut) ou "queue" (avec Redis).
+  executionsMode: regular
+
+# ─── Base de données ─────────────────────────────────────────────────────────
+database:
+  # sqlite : local sur PVC, mono-pod, suffit < 50 workflows simultanés.
+  # postgresdb : externe, scalable, requiert un PG provisionné à côté.
+  type: sqlite
+  postgres:
+    host: ""
+    port: 5432
+    database: n8n
+    user: n8n
+    password: ""
+    schema: public
+    ssl: false
+
+# ─── Persistance ─────────────────────────────────────────────────────────────
+# /home/node/.n8n : SQLite + credentials chiffrés + binary data uploads
+persistence:
+  enabled: true
+  size: 5Gi
+  storageClassName: ""
+  accessMode: ReadWriteOnce
+
+# ─── Sécurité pod (contraintes SSPCloud) ─────────────────────────────────────
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+# ─── Ressources ──────────────────────────────────────────────────────────────
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+
+# ─── Service ─────────────────────────────────────────────────────────────────
+service:
+  type: ClusterIP
+  port: 5678
+
+# ─── Ingress (TLS auto via cert-manager + nginx SSPCloud) ────────────────────
+ingress:
+  enabled: true
+  className: nginx
+  tls: true
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+    nginx.ingress.kubernetes.io/proxy-body-size: "64m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+
+# ─── Probes ──────────────────────────────────────────────────────────────────
+probes:
+  liveness:
+    enabled: true
+    initialDelaySeconds: 60
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readiness:
+    enabled: true
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3

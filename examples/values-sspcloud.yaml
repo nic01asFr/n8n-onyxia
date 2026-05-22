@@ -1,0 +1,33 @@
+# Override SSPCloud — à utiliser avec helm install -f
+# Adapte le chart générique aux contraintes du cluster SSPCloud Onyxia.
+
+n8n:
+  # Pattern hostname SSPCloud : user-{idep}-{service}.user.lab.sspcloud.fr
+  # À régler manuellement selon l'idep user.
+  host: ""
+  timezone: Europe/Paris
+
+ingress:
+  enabled: true
+  className: onyxia
+  tls: true
+  # SSPCloud gère le TLS au niveau de l'ingress controller onyxia.
+  # Pas d'annotation cert-manager nécessaire.
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "64m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+
+persistence:
+  enabled: true
+  size: 10Gi
+  storageClassName: rook-ceph-block
+  accessMode: ReadWriteOnce
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi

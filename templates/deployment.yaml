@@ -1,0 +1,138 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "n8n.fullname" . }}
+  labels:
+    {{- include "n8n.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  # PVC RWO + SQLite => recréation stricte, pas de rolling.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "n8n.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "n8n.selectorLabels" . | nindent 8 }}
+      annotations:
+        # Force le rolling si la clé / les paramètres changent.
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.securityContext | nindent 8 }}
+      containers:
+        - name: n8n
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.n8n.port }}
+              protocol: TCP
+          env:
+            # ─── Réseau et URLs ────────────────────────────────────────────
+            - name: N8N_HOST
+              value: {{ .Values.n8n.host | quote }}
+            - name: N8N_PORT
+              value: {{ .Values.n8n.port | quote }}
+            - name: N8N_PROTOCOL
+              value: {{ .Values.n8n.protocol | quote }}
+            - name: N8N_LISTEN_ADDRESS
+              value: "0.0.0.0"
+            - name: WEBHOOK_URL
+              value: "{{ .Values.n8n.protocol }}://{{ .Values.n8n.host }}/"
+            - name: N8N_EDITOR_BASE_URL
+              value: "{{ .Values.n8n.protocol }}://{{ .Values.n8n.host }}/"
+            # ─── Locale et logs ────────────────────────────────────────────
+            - name: GENERIC_TIMEZONE
+              value: {{ .Values.n8n.timezone | quote }}
+            - name: TZ
+              value: {{ .Values.n8n.timezone | quote }}
+            - name: N8N_LOG_LEVEL
+              value: {{ .Values.n8n.logLevel | quote }}
+            # ─── Confidentialité ───────────────────────────────────────────
+            - name: N8N_DIAGNOSTICS_ENABLED
+              value: {{ .Values.n8n.diagnostics | quote }}
+            - name: N8N_VERSION_NOTIFICATIONS_ENABLED
+              value: {{ .Values.n8n.versionNotifications | quote }}
+            - name: N8N_TEMPLATES_ENABLED
+              value: {{ .Values.n8n.templates | quote }}
+            - name: N8N_PERSONALIZATION_ENABLED
+              value: {{ .Values.n8n.personalization | quote }}
+            - name: N8N_HIRING_BANNER_ENABLED
+              value: "false"
+            # ─── Exécution ─────────────────────────────────────────────────
+            - name: EXECUTIONS_MODE
+              value: {{ .Values.n8n.executionsMode | quote }}
+            - name: N8N_USER_FOLDER
+              value: "/home/node/.n8n"
+            # ─── Sécurité credentials ──────────────────────────────────────
+            - name: N8N_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "n8n.fullname" . }}
+                  key: encryptionKey
+            # ─── Base de données ───────────────────────────────────────────
+            {{- if eq .Values.database.type "postgresdb" }}
+            - name: DB_TYPE
+              value: "postgresdb"
+            - name: DB_POSTGRESDB_HOST
+              value: {{ .Values.database.postgres.host | quote }}
+            - name: DB_POSTGRESDB_PORT
+              value: {{ .Values.database.postgres.port | quote }}
+            - name: DB_POSTGRESDB_DATABASE
+              value: {{ .Values.database.postgres.database | quote }}
+            - name: DB_POSTGRESDB_USER
+              value: {{ .Values.database.postgres.user | quote }}
+            - name: DB_POSTGRESDB_SCHEMA
+              value: {{ .Values.database.postgres.schema | quote }}
+            - name: DB_POSTGRESDB_SSL_ENABLED
+              value: {{ .Values.database.postgres.ssl | quote }}
+            - name: DB_POSTGRESDB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "n8n.fullname" . }}
+                  key: postgresPassword
+            {{- else }}
+            - name: DB_TYPE
+              value: "sqlite"
+            - name: DB_SQLITE_VACUUM_ON_STARTUP
+              value: "true"
+            {{- end }}
+            # ─── Proxy headers (ingress nginx) ─────────────────────────────
+            - name: N8N_PROXY_HOPS
+              value: "1"
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- if .Values.probes.liveness.enabled }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+          {{- end }}
+          {{- if .Values.probes.readiness.enabled }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /home/node/.n8n
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "n8n.fullname" . }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}

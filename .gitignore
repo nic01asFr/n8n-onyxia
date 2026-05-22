@@ -1,0 +1,7 @@
+*.tgz
+charts/
+.idea/
+.vscode/
+*.swp
+*.bak
+.DS_Store

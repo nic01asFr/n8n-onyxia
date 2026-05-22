@@ -1,0 +1,171 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "n8n": {
+      "type": "object",
+      "description": "Configuration de l'instance n8n",
+      "properties": {
+        "host": {
+          "type": "string",
+          "title": "Domaine public",
+          "description": "Hostname accessible depuis Internet (TLS auto). Sert d'URL aux webhooks externes.",
+          "default": "",
+          "x-onyxia": {
+            "overwriteDefaultWith": "n8n-{{k8s.randomSubdomain}}.user-{{user.idep}}.lab.sspcloud.fr"
+          }
+        },
+        "timezone": {
+          "type": "string",
+          "title": "Fuseau horaire",
+          "description": "Utilisé par n8n pour les nœuds Schedule/Cron.",
+          "default": "Europe/Paris",
+          "enum": [
+            "Europe/Paris",
+            "Europe/London",
+            "UTC",
+            "America/New_York",
+            "America/Los_Angeles",
+            "Asia/Tokyo"
+          ]
+        },
+        "logLevel": {
+          "type": "string",
+          "title": "Niveau de log",
+          "default": "info",
+          "enum": ["error", "warn", "info", "verbose", "debug"]
+        },
+        "encryptionKey": {
+          "type": "string",
+          "title": "Clé de chiffrement des credentials",
+          "description": "Chiffre les credentials stockées par n8n. À SAUVEGARDER PRÉCIEUSEMENT : si perdue, tous les credentials sont irrécupérables. Laissée vide = auto-générée au déploiement.",
+          "default": "",
+          "x-onyxia": {
+            "hidden": false,
+            "overwriteDefaultWith": "{{ k8s.randomSubdomain }}{{ k8s.randomSubdomain }}"
+          }
+        },
+        "executionsMode": {
+          "type": "string",
+          "title": "Mode d'exécution",
+          "description": "regular : workflows exécutés dans le pod n8n. queue : nécessite Redis (pas géré par ce chart).",
+          "default": "regular",
+          "enum": ["regular", "queue"]
+        }
+      }
+    },
+    "database": {
+      "type": "object",
+      "title": "Base de données",
+      "description": "Stockage des workflows, executions, credentials",
+      "properties": {
+        "type": {
+          "type": "string",
+          "title": "Moteur",
+          "description": "SQLite : simple, mono-pod, suffit pour usage personnel/équipe. PostgreSQL : robuste, multi-réplique possible.",
+          "default": "sqlite",
+          "enum": ["sqlite", "postgresdb"]
+        },
+        "postgres": {
+          "type": "object",
+          "title": "PostgreSQL externe",
+          "description": "Renseigner uniquement si type = postgresdb",
+          "properties": {
+            "host": {
+              "type": "string",
+              "title": "Host",
+              "default": ""
+            },
+            "port": {
+              "type": "integer",
+              "title": "Port",
+              "default": 5432,
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "database": {
+              "type": "string",
+              "title": "Nom de la base",
+              "default": "n8n"
+            },
+            "user": {
+              "type": "string",
+              "title": "Utilisateur",
+              "default": "n8n"
+            },
+            "password": {
+              "type": "string",
+              "title": "Mot de passe",
+              "description": "Stocké dans un Secret Kubernetes.",
+              "default": ""
+            },
+            "schema": {
+              "type": "string",
+              "title": "Schéma",
+              "default": "public"
+            },
+            "ssl": {
+              "type": "boolean",
+              "title": "TLS",
+              "default": false
+            }
+          }
+        }
+      }
+    },
+    "persistence": {
+      "type": "object",
+      "title": "Stockage persistant",
+      "description": "PVC monté sur /home/node/.n8n (workflows, credentials, SQLite, uploads)",
+      "properties": {
+        "size": {
+          "type": "string",
+          "title": "Taille du volume",
+          "description": "Survit aux redémarrages du pod.",
+          "default": "5Gi",
+          "enum": ["1Gi", "5Gi", "10Gi", "20Gi", "50Gi"]
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "title": "Ressources allouées",
+      "properties": {
+        "requests": {
+          "type": "object",
+          "title": "Requêtes (réservation)",
+          "properties": {
+            "cpu": {
+              "type": "string",
+              "title": "CPU",
+              "default": "200m",
+              "description": "200m = 0,2 cœur"
+            },
+            "memory": {
+              "type": "string",
+              "title": "RAM",
+              "default": "512Mi"
+            }
+          }
+        },
+        "limits": {
+          "type": "object",
+          "title": "Limites (plafond)",
+          "properties": {
+            "cpu": {
+              "type": "string",
+              "title": "CPU max",
+              "default": "2000m",
+              "description": "2000m = 2 cœurs"
+            },
+            "memory": {
+              "type": "string",
+              "title": "RAM max",
+              "default": "2Gi"
+            }
+          }
+        }
+      }
+    }
+  }
+}

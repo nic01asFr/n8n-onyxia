@@ -1,0 +1,42 @@
+
+╭──────────────────────────────────────────────────────────────────────╮
+│  n8n est en cours de déploiement sur SSPCloud Onyxia.                │
+╰──────────────────────────────────────────────────────────────────────╯
+
+URL d'accès :
+  {{ .Values.n8n.protocol }}://{{ .Values.n8n.host }}
+
+Premier démarrage :
+  1. Ouvrir l'URL ci-dessus dans le navigateur.
+  2. Créer le compte owner (email + mot de passe). C'est l'admin.
+  3. Optionnellement, activer la 2FA dans Settings.
+
+Webhooks externes :
+  Base URL = {{ .Values.n8n.protocol }}://{{ .Values.n8n.host }}/webhook/...
+  À utiliser dans n'importe quel nœud Webhook ou Form Trigger.
+
+Persistance :
+  PVC = {{ include "n8n.fullname" . }} ({{ .Values.persistence.size }})
+  Annotation helm.sh/resource-policy: keep — les données survivent à un
+  `helm uninstall`. Pour TOUT supprimer, faire ensuite :
+    kubectl delete pvc {{ include "n8n.fullname" . }}
+    kubectl delete secret {{ include "n8n.fullname" . }}
+
+Sauvegarde critique :
+  La clé N8N_ENCRYPTION_KEY est stockée dans le Secret K8s
+  `{{ include "n8n.fullname" . }}`. Si tu perds ce Secret ET que tu
+  redéployes, TOUS les credentials existants deviennent illisibles.
+  Pour l'exporter :
+    kubectl get secret {{ include "n8n.fullname" . }} \
+      -o jsonpath='{.data.encryptionKey}' | base64 -d
+
+Base de données : {{ .Values.database.type }}
+{{- if eq .Values.database.type "postgresdb" }}
+  PostgreSQL externe : {{ .Values.database.postgres.host }}:{{ .Values.database.postgres.port }}/{{ .Values.database.postgres.database }}
+{{- else }}
+  SQLite locale dans /home/node/.n8n/database.sqlite (sur PVC).
+{{- end }}
+
+État du déploiement :
+  kubectl get pod -l app.kubernetes.io/instance={{ .Release.Name }}
+  kubectl logs -l app.kubernetes.io/instance={{ .Release.Name }} -f
