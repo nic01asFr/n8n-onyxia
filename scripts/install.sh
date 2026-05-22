@@ -145,10 +145,11 @@ provision_n8n_api_key() {
   fi
 
   # Login avec les credentials du Secret.
+  # n8n 1.80+ attend "email", versions plus anciennes "emailOrLdapLoginId" — on envoie les deux.
   log "Login..."
   local login_http login_body
   login_body=$(jq -n --arg e "$owner_email" --arg p "$owner_password" \
-    '{emailOrLdapLoginId:$e,password:$p}')
+    '{email:$e,emailOrLdapLoginId:$e,password:$p}')
   login_http=$(curl -s -c /tmp/n8n-cookies.txt -o /tmp/n8n-login.json -w "%{http_code}" \
     -X POST "$n8n_pub/rest/login" \
     -H "Content-Type: application/json" \
@@ -184,6 +185,15 @@ provision_n8n_api_key() {
   kubectl -n "$NS" patch secret n8n --type=merge \
     -p "$(jq -n --arg k "$key_b64" '{data:{N8N_API_KEY:$k}}')" >/dev/null
   ok "Secret n8n patché avec N8N_API_KEY"
+
+  # Si n8n-mcp est déjà déployé, le redémarrer pour qu'il prenne la nouvelle clé.
+  # (Les env vars d'un pod ne se rafraîchissent pas tant que le pod n'est pas recréé.)
+  if kubectl -n "$NS" get deploy n8n-mcp >/dev/null 2>&1; then
+    log "Restart de n8n-mcp pour prise en compte de la nouvelle N8N_API_KEY..."
+    kubectl -n "$NS" rollout restart deploy/n8n-mcp >/dev/null
+    kubectl -n "$NS" rollout status deploy/n8n-mcp --timeout=60s >/dev/null 2>&1 || warn "Timeout rollout n8n-mcp"
+    ok "n8n-mcp redémarré"
+  fi
 
   # Cleanup
   rm -f /tmp/n8n-setup.json /tmp/n8n-login.json /tmp/n8n-cookies.txt
