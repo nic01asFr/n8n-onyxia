@@ -3,10 +3,10 @@ entries:
   n8n:
   - apiVersion: v2
     appVersion: 1.80.3
-    created: "2026-05-22T10:49:11.951282678Z"
+    created: "2026-05-22T10:58:20.963526182Z"
     description: 'n8n workflow automation packagÃ© pour le catalogue Onyxia SSPCloud.
       Persistance PVC, ingress TLS, webhooks externes activÃ©s, SQLite ou PostgreSQL. '
-    digest: 807104b585913c23ad68a6b35e7c22c271cd0d79bc205253d5523722ca43edcd
+    digest: 015f6853ac39fb5cd3c8c1b861f0632e9afab8820263cdbc5b09574ded1878a4
     home: https://n8n.io
     icon: https://n8n.io/favicon.ico
     keywords:
@@ -54,11 +54,11 @@ entries:
   n8n-mcp:
   - apiVersion: v2
     appVersion: latest
-    created: "2026-05-22T10:49:11.951782028Z"
+    created: "2026-05-22T10:58:20.964034781Z"
     description: 'Serveur MCP (Model Context Protocol) pour n8n — czlonkowski/n8n-mcp.
       Mode HTTP streamable, auth Bearer token, intégration n8n API complète. Packagé
       pour le catalogue Onyxia SSPCloud. '
-    digest: 033980259d44be0c894c968adc240fd468947563a683709067d0933ba84eb2d2
+    digest: b30212d52f338a7dc815b1af2e035bb2e7140619ad30059628575eea187eb891
     home: https://github.com/czlonkowski/n8n-mcp
     icon: https://n8n.io/favicon.ico
     keywords:
@@ -78,4 +78,4 @@ entries:
     urls:
     - https://nic01asfr.github.io/n8n-onyxia/n8n-mcp-0.1.0.tgz
     version: 0.1.0
-generated: "2026-05-22T10:49:11.950393073Z"
+generated: "2026-05-22T10:58:20.962684051Z"
