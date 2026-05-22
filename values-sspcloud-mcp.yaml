@@ -1,0 +1,34 @@
+# Override SSPCloud — à utiliser avec helm install -f
+# Adapte le chart au cluster SSPCloud Onyxia.
+
+mcp:
+  host: ""
+  logLevel: info
+  trustProxy: 1
+
+n8n:
+  apiUrl: ""
+
+# AUTH_TOKEN auto-généré et stable entre upgrades.
+# Pour fixer une valeur explicite : décommenter et fournir une chaîne 48+ char.
+# mcpAuth:
+#   token: ""
+
+# Clé API n8n lue depuis le Secret généré par n8n-onyxia (auto-provisionné).
+n8nApiSecret:
+  name: n8n
+  key: N8N_API_KEY
+
+ingress:
+  enabled: true
+  className: onyxia
+  tls: true
+  annotations: {}
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
