@@ -35,6 +35,13 @@ mcp:
   corsOrigin: "*"
   # Nombre de hops proxy (ingress nginx = 1, ingress onyxia = 1 aussi)
   trustProxy: 1
+  # Niveau de protection SSRF côté MCP :
+  #   - strict     (défaut upstream) : bloque localhost + IPs privées
+  #   - moderate   : autorise localhost, bloque IPs privées
+  #   - permissive : autorise tout, y compris cluster K8s (svc.cluster.local)
+  # En K8s, ce flag DOIT être à permissive pour que le MCP puisse parler
+  # à n8n via le Service interne (sinon "SSRF protection: Private IP not allowed").
+  securityMode: permissive
 
 # ─── Intégration n8n ─────────────────────────────────────────────────────────
 # L'URL n8n peut être :

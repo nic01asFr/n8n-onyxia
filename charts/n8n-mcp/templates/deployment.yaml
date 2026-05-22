@@ -46,6 +46,9 @@ spec:
               value: {{ .Values.mcp.trustProxy | quote }}
             - name: CORS_ORIGIN
               value: {{ .Values.mcp.corsOrigin | quote }}
+            # ─── SSRF protection mode (cf. values.yaml mcp.securityMode) ─
+            - name: WEBHOOK_SECURITY_MODE
+              value: {{ .Values.mcp.securityMode | quote }}
             # ─── Auth Bearer (Secret généré par ce chart) ────────────────
             - name: AUTH_TOKEN
               valueFrom:

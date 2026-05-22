@@ -5,7 +5,7 @@ description: |
   Mode HTTP streamable, auth Bearer token, intégration n8n API complète.
   Packagé pour le catalogue Onyxia SSPCloud.
 type: application
-version: 0.1.0
+version: 0.2.0
 appVersion: "latest"
 icon: https://n8n.io/favicon.ico
 keywords:
