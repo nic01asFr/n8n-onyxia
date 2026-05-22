@@ -1,116 +1,153 @@
-# n8n-mcp-onyxia
+# Chart Helm `n8n-mcp`
 
-Chart Helm pour déployer le **serveur MCP n8n** ([czlonkowski/n8n-mcp](https://github.com/czlonkowski/n8n-mcp)) dans une instance Onyxia SSPCloud. Mode HTTP streamable, auth Bearer, intégration complète avec une instance n8n existante (39 tools pour interroger, créer, valider et déboguer des workflows depuis un agent LLM).
+Chart Helm pour [czlonkowski/n8n-mcp](https://github.com/czlonkowski/n8n-mcp) — serveur **Model Context Protocol** pour n8n, prêt pour SSPCloud Onyxia.
 
-## Pré-requis
+> Si tu cherches juste à installer, va voir le [README à la racine du repo](../../README.md). Ce chart est installé automatiquement par `scripts/install.sh` après n8n.
 
-1. Une instance n8n accessible (en cluster via Service ClusterIP, ou publique).
-2. Une **clé d'API n8n** créée dans n8n → Settings → API.
-3. Un **token MCP** (généré aléatoirement, requis pour le Bearer).
+## C'est quoi MCP, déjà ?
 
-## Installation pas à pas
+**Model Context Protocol** (Anthropic) est un standard pour brancher un LLM à des outils externes. Une fois ce chart déployé, Claude (ou tout autre client MCP) peut parler à ton instance n8n via 39 outils :
 
-### 1 — Créer le Secret K8s avec les deux clés
+- `n8n_list_workflows`, `n8n_get_workflow`, `n8n_create_workflow`, `n8n_update_partial_workflow`
+- `n8n_execute_workflow_webhook`, `n8n_executions`
+- `search_nodes`, `get_node`, `get_template`
+- `validate_node`, `validate_workflow`, `n8n_autofix_workflow`
+- `n8n_health_check`, `n8n_audit_instance`
+- … et 25+ autres
 
-```powershell
-# Token MCP (Bearer pour les clients) — généré aléatoirement
-$MCP_TOKEN = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 48 | ForEach-Object { [char]$_ })
+Liste complète : [README du projet upstream](https://github.com/czlonkowski/n8n-mcp#tools).
 
-# Clé API n8n récupérée dans l'UI n8n
-$N8N_API_KEY = "eyJ..."
+## Ce qui est embarqué
 
-kubectl create secret generic n8n-mcp-credentials `
-  --from-literal=AUTH_TOKEN=$MCP_TOKEN `
-  --from-literal=N8N_API_KEY=$N8N_API_KEY `
-  -n user-<idep>
+| Composant | Détail |
+|---|---|
+| Image | `ghcr.io/czlonkowski/n8n-mcp:latest` |
+| Transport | HTTP streamable (compatible Claude Code `--transport http`) |
+| Auth | Bearer token (généré aléatoire 48 char, stable entre upgrades via `lookup`) |
+| Endpoint MCP | `POST /mcp` |
+| Healthcheck | `GET /health` (nécessite le Bearer) |
+| n8n API | Lue depuis le Secret `n8n` du chart `n8n-onyxia` (auto) |
+| Stateless | Pas de PVC, scalable horizontalement |
 
-# Sauvegarder le token MCP : il sert à tous les clients (Claude, etc.)
-Write-Output "MCP_TOKEN = $MCP_TOKEN"
-```
+## Installation manuelle
 
-### 2 — helm install
-
-```powershell
-helm install n8n-mcp . `
-  --kube-context sspcloud `
-  -n user-<idep> `
-  -f examples/values-sspcloud.yaml `
-  --set "mcp.host=user-<idep>-n8n-mcp.user.lab.sspcloud.fr" `
-  --set "n8n.apiUrl=http://n8n.user-<idep>.svc.cluster.local:5678"
-```
-
-### 3 — Tester l'endpoint
-
-```powershell
-$TOKEN = kubectl get secret n8n-mcp-credentials -n user-<idep> -o jsonpath='{.data.AUTH_TOKEN}' | base64 -d
-curl -H "Authorization: Bearer $TOKEN" https://user-<idep>-n8n-mcp.user.lab.sspcloud.fr/health
-# → {"status":"ok",...}
-```
-
-## Configuration client MCP
-
-### Claude Code (CLI)
+Pré-requis : le chart `n8n` est déjà déployé dans le même namespace (le MCP lit le Secret `n8n` pour la clé API).
 
 ```bash
-claude mcp add n8n --transport http https://user-<idep>-n8n-mcp.user.lab.sspcloud.fr/mcp \
-  --header "Authorization: Bearer <AUTH_TOKEN>"
+IDEP=monidep
+NS=user-$IDEP
+
+helm install n8n-mcp nic01asfr/n8n-mcp \
+  --namespace $NS \
+  -f https://nic01asfr.github.io/n8n-onyxia/values-sspcloud-mcp.yaml \
+  --set mcp.host=user-$IDEP-n8n-mcp.user.lab.sspcloud.fr \
+  --set n8n.apiUrl=http://n8n.$NS.svc.cluster.local:5678
 ```
 
-### Claude Desktop
+Récupérer le token MCP :
+```bash
+kubectl -n $NS get secret n8n-mcp -o jsonpath='{.data.AUTH_TOKEN}' | base64 -d
+```
 
-`~/AppData/Roaming/Claude/claude_desktop_config.json` (Windows) ou `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) :
+## Brancher un client MCP
+
+### Claude Code
+
+```bash
+claude mcp add n8n --transport http \
+  https://user-$IDEP-n8n-mcp.user.lab.sspcloud.fr/mcp \
+  --header "Authorization: Bearer $TOKEN"
+```
+
+### Claude Desktop (via bridge `mcp-remote`)
 
 ```json
 {
   "mcpServers": {
     "n8n": {
-      "transport": {
-        "type": "streamable-http",
-        "url": "https://user-<idep>-n8n-mcp.user.lab.sspcloud.fr/mcp",
-        "headers": {
-          "Authorization": "Bearer <AUTH_TOKEN>"
-        }
+      "command": "npx",
+      "args": ["-y", "mcp-remote",
+        "https://user-$IDEP-n8n-mcp.user.lab.sspcloud.fr/mcp",
+        "--header", "Authorization: Bearer $TOKEN"]
+    }
+  }
+}
+```
+
+### `.mcp.json` d'un projet (project-scoped)
+
+```json
+{
+  "mcpServers": {
+    "n8n": {
+      "type": "http",
+      "url": "https://user-$IDEP-n8n-mcp.user.lab.sspcloud.fr/mcp",
+      "headers": {
+        "Authorization": "Bearer $TOKEN"
       }
     }
   }
 }
 ```
 
-### Cursor / autres clients
+## Configuration
 
-Le serveur expose la spec MCP standard sur `/mcp` (POST JSON-RPC). Tout client compatible MCP Streamable HTTP fonctionne.
+Le formulaire Onyxia (`values.schema.json`) expose :
 
-## Tools MCP exposés
+| Section | Champ | Description |
+|---|---|---|
+| `mcp` | `host` | Domaine public (auto-rempli par Onyxia) |
+| `mcp` | `logLevel` | error / warn / info / debug |
+| `mcp` | `corsOrigin` | `*` par défaut. Restreindre pour durcir. |
+| `n8n` | `apiUrl` | URL de l'instance n8n (interne au cluster, `svc.cluster.local`) |
+| `n8nApiSecret` | `name` | Secret K8s qui contient `N8N_API_KEY` (= `n8n` par défaut) |
+| `resources` | `requests/limits` | CPU et RAM |
+| `replicaCount` | | MCP stateless → scalable, par défaut 1 |
 
-39 tools pour interagir avec n8n (extraits) :
-
-- `n8n_list_workflows` / `n8n_get_workflow` / `n8n_create_workflow` / `n8n_update_workflow`
-- `n8n_execute_workflow_webhook` (déclencher)
-- `n8n_list_executions` / `n8n_get_execution` (debug)
-- `tools_documentation` (auto-doc)
-- `list_nodes` / `get_node_info` / `get_node_essentials` (catalogue nodes n8n)
-- `validate_node_operation` / `validate_workflow_connections` / `validate_workflow_expressions`
-- `get_workflow_diff` / `update_partial_workflow` (édition diff)
-
-Liste complète : voir [czlonkowski/n8n-mcp](https://github.com/czlonkowski/n8n-mcp#tools).
+`values.yaml` complet : [charts/n8n-mcp/values.yaml](values.yaml).
 
 ## Sécurité
 
-- Token MCP transmis exclusivement en header `Authorization: Bearer`.
-- Connexion à n8n via Service interne au cluster (`*.svc.cluster.local`) → pas de TLS, pas de traversée Internet.
-- Clé API n8n stockée dans un Secret K8s, jamais dans values.yaml ni git.
-- Possible de restreindre `corsOrigin` à un domaine précis si l'UI MCP est utilisée depuis un client web identifié.
+| Couche | Détail |
+|---|---|
+| **TLS** | Let's Encrypt auto via ingress controller |
+| **Bearer token** | 48 chars random, ~285 bits d'entropie. Modèle MCP HTTP standard. |
+| **Isolation** | MCP parle à n8n via Service interne `svc.cluster.local` (pas Internet) |
+| **CORS** | `*` par défaut. Restreindre via `mcp.corsOrigin` pour bloquer les UI web tierces. |
+
+→ Suffisant pour usage perso/équipe restreinte. Pour multi-user enterprise, ajouter un oauth2-proxy en sidecar (mais Claude Desktop ne supporte pas le flow OIDC pour MCP à date).
+
+## Rotation du token
+
+Pour révoquer + regénérer :
+
+```bash
+kubectl -n $NS delete secret n8n-mcp
+helm upgrade n8n-mcp nic01asfr/n8n-mcp -n $NS --reuse-values
+kubectl -n $NS rollout restart deploy/n8n-mcp
+# Nouveau token :
+kubectl -n $NS get secret n8n-mcp -o jsonpath='{.data.AUTH_TOKEN}' | base64 -d
+```
+
+Puis mettre à jour la config Claude / `.mcp.json`.
 
 ## Désinstallation
 
-```powershell
-helm uninstall n8n-mcp -n user-<idep> --kube-context sspcloud
-# Le Secret n8n-mcp-credentials n'est PAS supprimé (créé hors chart).
-# Pour le supprimer :
-kubectl delete secret n8n-mcp-credentials -n user-<idep> --context sspcloud
+```bash
+helm uninstall n8n-mcp -n $NS
+# Le Secret n8n-mcp est conservé (resource-policy: keep). Pour le supprimer :
+kubectl delete secret n8n-mcp -n $NS
 ```
+
+## Limites spécifiques
+
+- **MCP Streamable HTTP stateful** : un client doit gérer le header `Mcp-Session-Id` après `initialize`. Le test naïf `curl /mcp/<method>` ne marche que pour `initialize`.
+- **Claude Desktop ancien** : pas de transport HTTP natif → bridge `mcp-remote` requis (Node.js).
+- **Pas de rate limiting** : un client peut bombarder le pod. À ajouter via annotations nginx ingress si besoin.
+- **CORS = `*` par défaut** : tout origin web peut appeler avec le token. Restreindre si UI web exposée.
+- **n8n-mcp tools dépendent de la version n8n** : si tu changes la version n8n, redémarre n8n-mcp pour recharger le catalogue de nœuds (`kubectl rollout restart deploy/n8n-mcp`).
 
 ## Licence
 
 Chart : MIT  
-n8n-mcp : MIT (czlonkowski)
+n8n-mcp upstream : MIT ([czlonkowski/n8n-mcp](https://github.com/czlonkowski/n8n-mcp))
