@@ -166,18 +166,30 @@ provision_n8n_api_key() {
 
   # Création clé API.
   log "Création clé API..."
-  local key_body raw_key
-  key_body=$(jq -n '{label:"auto-provisioned"}')
-  raw_key=$(curl -s -b /tmp/n8n-cookies.txt \
+  local key_body key_resp raw_key
+  # expiresAt: null = pas d'expiration (n8n exige le champ explicitement)
+  key_body=$(jq -n '{label:"auto-provisioned",expiresAt:null}')
+  key_resp=$(curl -s -b /tmp/n8n-cookies.txt \
     -X POST "$n8n_pub/rest/api-keys" \
     -H "Content-Type: application/json" \
-    -d "$key_body" \
-    | jq -r '.data.rawApiKey // .rawApiKey // empty')
+    -d "$key_body")
+  # Plusieurs formats possibles selon la version n8n.
+  raw_key=$(echo "$key_resp" | jq -r '
+    .data.rawApiKey // .rawApiKey //
+    .data.apiKey // .apiKey //
+    .data.key // .key //
+    empty
+  ' 2>/dev/null)
   if [[ -z "$raw_key" ]] || [[ "$raw_key" == "null" ]]; then
-    warn "Échec extraction rawApiKey. La clé devra être créée manuellement."
+    warn "Échec extraction clé API."
+    warn "Réponse n8n (premiers 500 char) : $(echo "$key_resp" | head -c 500)"
+    warn "Crée manuellement via UI Settings → API → Create API Key, puis :"
+    warn "  KEY=<la clé>"
+    warn "  kubectl -n $NS patch secret n8n --type=merge -p \"{\\\"data\\\":{\\\"N8N_API_KEY\\\":\\\"\$(echo -n \$KEY | base64 -w0)\\\"}}\""
+    warn "  kubectl -n $NS rollout restart deploy/n8n-mcp"
     return 0
   fi
-  ok "Clé API créée"
+  ok "Clé API créée (longueur ${#raw_key})"
 
   # Patch Secret K8s avec la clé.
   local key_b64
