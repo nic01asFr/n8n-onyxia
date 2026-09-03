@@ -12,6 +12,8 @@
 #   MCP_VERSION     : version chart n8n-mcp (sinon latest)
 #   SKIP_MCP        : "true" pour n'installer que n8n
 #   HELM_REPO_URL   : surcharger l'URL du Helm repo (debug)
+#   HELM_CONFIG_HOME / HELM_CACHE_HOME / HELM_DATA_HOME : surcharge des répertoires Helm
+#     (par défaut /tmp/helm/* — certains pods Jupyter ont /home/onyxia en lecture seule)
 #
 set -euo pipefail
 
@@ -38,6 +40,13 @@ if ! kubectl auth can-i get pods >/dev/null 2>&1; then
   die "Pas d'accès au cluster K8s. Le kubeconfig SSPCloud n'est-il pas configuré ?"
 fi
 
+# Sur certains pods Jupyter, /home/onyxia/ est en lecture seule → helm repo add échoue.
+# Rediriger la config Helm vers /tmp (surcharge possible via HELM_*_HOME).
+export HELM_CONFIG_HOME="${HELM_CONFIG_HOME:-/tmp/helm/config}"
+export HELM_CACHE_HOME="${HELM_CACHE_HOME:-/tmp/helm/cache}"
+export HELM_DATA_HOME="${HELM_DATA_HOME:-/tmp/helm/data}"
+mkdir -p "$HELM_CONFIG_HOME" "$HELM_CACHE_HOME" "$HELM_DATA_HOME"
+
 # ─── 2. Détection du namespace ───────────────────────────────────────────────
 NS="${NAMESPACE:-${KUBERNETES_NAMESPACE:-}}"
 if [[ -z "$NS" ]]; then
@@ -51,6 +60,17 @@ fi
 
 IDEP="${NS#user-}"
 ok "Namespace cible : ${BOLD}$NS${RESET} (idep: $IDEP)"
+
+# Droits K8s : le rôle « Edit » du pod Jupyter est requis (pas « View »).
+if ! kubectl auth can-i create deployments -n "$NS" >/dev/null 2>&1; then
+  die "Pas le droit de créer des Deployments dans $NS.
+Relance ton pod Jupyter avec kubernetes.role = Edit (pas View).
+Vérifie : kubectl auth can-i create deployments -n $NS"
+fi
+if ! kubectl auth can-i get secrets -n "$NS" >/dev/null 2>&1; then
+  die "Pas le droit de lire les Secrets dans $NS (requis pour helm list et le provisioning).
+Relance ton pod Jupyter avec kubernetes.role = Edit."
+fi
 
 # ─── 3. Email owner ──────────────────────────────────────────────────────────
 if [[ -z "${OWNER_EMAIL:-}" ]]; then

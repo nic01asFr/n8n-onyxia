@@ -14,6 +14,10 @@ Depuis n'importe quel **terminal de pod Jupyter SSPCloud** (qui a déjà `kubect
 curl -sL https://nic01asfr.github.io/n8n-onyxia/install.sh | bash
 ```
 
+**Prérequis pod Jupyter** :
+- Lancer le service avec le rôle Kubernetes **Edit** (pas View) — sinon `helm install` et la lecture des Secrets échouent.
+- Le script redirige automatiquement la config Helm vers `/tmp/helm/` (sur certains pods, `/home/onyxia/` est en lecture seule).
+
 Le script fait tout :
 
 1. Détecte ton namespace et ton email automatiquement
@@ -102,6 +106,17 @@ Les charts `n8n` et `n8n-mcp` apparaissent ensuite dans ton catalogue, lançable
 
 ### B. Helm direct (utilisateur avancé)
 
+Si `helm repo add` échoue sur une erreur d'écriture dans `/home/onyxia/` :
+
+```bash
+export HELM_CONFIG_HOME=/tmp/helm/config
+export HELM_CACHE_HOME=/tmp/helm/cache
+export HELM_DATA_HOME=/tmp/helm/data
+mkdir -p "$HELM_CONFIG_HOME" "$HELM_CACHE_HOME" "$HELM_DATA_HOME"
+```
+
+Puis :
+
 ```bash
 helm repo add nic01asfr https://nic01asfr.github.io/n8n-onyxia
 helm repo update
@@ -162,6 +177,8 @@ kubectl -n $NS get secret n8n-mcp -o jsonpath='{.data.AUTH_TOKEN}' | base64 -d
 
 | Catégorie | Limite | Atténuation |
 |---|---|---|
+| **Pod Jupyter** | Rôle K8s « View » insuffisant pour `helm install` / Secrets. | Relancer le pod avec **Edit**. |
+| **Helm config** | `/home/onyxia/` parfois en lecture seule. | `install.sh` redirige vers `/tmp/helm/` ; voir méthode B ci-dessus. |
 | **Scaling** | Mono-pod (SQLite + PVC RWO). Pas de multi-réplique. | Passer en PostgreSQL + mode queue (non fourni pour l'instant). |
 | **Workflows en cours** | Redémarrage du pod = exécution interrompue. | Workflows critiques : monitor externe + retry. |
 | **OAuth** | Callback URL fixe → changer le hostname casse les credentials OAuth. | Ne pas changer le hostname une fois en prod. |
