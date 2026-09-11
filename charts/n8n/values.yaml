@@ -1,83 +1,112 @@
-# Valeurs par défaut du chart n8n-onyxia.
-# Surchargées via le formulaire Onyxia (values.schema.json) ou --set en CLI.
+# Valeurs par défaut du chart n8n pour Onyxia.
+#
+# Lancé depuis un catalogue Onyxia, le formulaire (values.schema.json) renseigne
+# l'hôte, l'email et le mot de passe. En ligne de commande, scripts/install.sh
+# injecte les mêmes valeurs à partir de l'environnement du pod Jupyter.
 
-# ─── Image n8n ───────────────────────────────────────────────────────────────
-image:
-  repository: docker.n8n.io/n8nio/n8n
-  tag: "1.80.3"
-  pullPolicy: IfNotPresent
-
-# ─── Identité Onyxia ─────────────────────────────────────────────────────────
-# Ces blocs sont remplis automatiquement par Onyxia lors du lancement.
-onyxia:
-  friendlyName: "n8n"
-  chartIconUrl: https://n8n.io/favicon.ico
-
-git:
-  name: ""
-  email: ""
-
-vault:
-  token: ""
-  url: ""
-  secret: ""
-
-s3:
-  enabled: false
-
-userPreferences:
-  language: fr
-
-# ─── Configuration n8n ───────────────────────────────────────────────────────
-n8n:
-  # Hostname public, surchargé par Onyxia (cf. values.schema.json).
-  host: ""
-  port: 5678
-  protocol: https
-  timezone: Europe/Paris
-  logLevel: info
-  # Chiffrement des credentials. Auto-généré si vide. À sauvegarder !
-  encryptionKey: ""
-  # Anti-télémétrie n8n.
-  diagnostics: false
-  versionNotifications: false
-  personalization: false
-  # Catalogue de templates n8n (lecture seule, depuis n8n.io).
-  templates: true
-  # Politique d'exécution des workflows : "regular" (par défaut) ou "queue" (avec Redis).
-  executionsMode: regular
-
-# ─── Owner par défaut + auto-provisioning ────────────────────────────────────
-# Si provisioning.enabled = true, un Job post-install :
-#   1. Crée le compte owner si l'instance est vierge
-#   2. Se logge avec les credentials du Secret
-#   3. Génère une clé API n8n nommée "auto-provisioned"
-#   4. Patch le Secret K8s avec la clé pour consommation par n8n-mcp
-# Idempotent : si la clé existe déjà, le Job est no-op.
-owner:
-  email: ""              # requis pour login UI
-  firstName: "Admin"
-  lastName: "n8n"
-  password: ""           # auto-généré si vide (stable entre upgrades via lookup)
-
-provisioning:
-  # IN-CLUSTER Job desactive par defaut : la plupart des clusters managed
-  # (dont SSPCloud) refusent create/delete sur Role dans un namespace user.
-  # Le script install.sh fait le provisioning depuis le client (kubectl du user)
-  # qui a tous les droits patch Secret.
-  # Mettre a true uniquement sur clusters qui autorisent les Roles dans le namespace.
-  enabled: false
-  apiKeyLabel: "auto-provisioned"
-  # Image utilisee par le Job (besoin de curl + jq + busybox base64).
+# --- Image n8n -----------------------------------------------------------------
+service:
   image:
-    repository: alpine
-    tag: "3.20"
+    repository: docker.n8n.io/n8nio/n8n
+    # Tag figé : un « latest » ferait dépendre la version du jour du redémarrage.
+    tag: "2.38.6"
     pullPolicy: IfNotPresent
 
-# ─── Base de données ─────────────────────────────────────────────────────────
+# --- Accès -----------------------------------------------------------------------
+security:
+  # Identifiant du compte owner n8n. Onyxia : {{user.email}}.
+  email: ""
+  # Mot de passe du compte owner. Onyxia : {{service.oneTimePassword}}, affiché
+  # dans « Mes services ». n8n exige une majuscule et un chiffre : s'il en manque,
+  # le chart préfixe la valeur par « N8n- » et affiche le mot de passe effectif.
+  # Vide : tiré au sort et conservé dans le Secret de la release.
+  password: ""
+  # Restreint l'accès aux IP listées (annotation nginx whitelist-source-range).
+  allowlist:
+    enabled: false
+    ip: "0.0.0.0/0"
+  # N'accepte que le trafic du namespace et du contrôleur d'ingress.
+  networkPolicy:
+    enabled: false
+    from: []
+
+# Identité affichée dans n8n pour le compte owner.
+owner:
+  firstName: "Admin"
+  lastName: "n8n"
+
+# --- n8n -------------------------------------------------------------------------
+n8n:
+  timezone: Europe/Paris
+  logLevel: info
+  # Chiffre les credentials stockées par n8n. Vide : tirée au sort au premier
+  # déploiement puis relue dans le Secret aux mises à jour. La perdre rend les
+  # credentials existantes illisibles.
+  encryptionKey: ""
+  # Catalogue de modèles de workflows publié par n8n.io.
+  templates: true
+  # Télémétrie et bannières n8n.
+  diagnostics: false
+  # Paquets communautaires non vérifiés par n8n : du code tiers exécuté dans le
+  # pod. Désactivés par défaut sur une plateforme partagée.
+  unverifiedCommunityPackages: false
+  # Dossier dans lequel n8n crée « .n8n ». Le volume est monté sur
+  # /home/node/.n8n : les données sont donc à la racine du volume. Les charts
+  # 0.x posaient /home/node/.n8n, d'où des données dans « .n8n/.n8n » : pour
+  # reprendre un tel volume, régler cette valeur sur /home/node/.n8n.
+  userFolder: /home/node
+  # Variables d'environnement supplémentaires, par nom.
+  extraEnv: {}
+
+# --- Provisioning dans le pod ------------------------------------------------------
+# Un conteneur annexe crée le compte owner dès le démarrage, puis une clé API pour
+# le serveur MCP, déposée sur le volume. Tout passe par localhost : aucun droit
+# Kubernetes n'est nécessaire. Sans lui, l'écran de création du compte owner
+# resterait ouvert au premier visiteur de l'URL publique.
+provisioning:
+  enabled: true
+  apiKeyLabel: onyxia-mcp
+  # Préfixes des scopes accordés à la clé API du MCP. Vide : tous les scopes.
+  apiKeyScopePrefixes: "workflow:,execution:,tag:,dataTable:,credential:,folder:"
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# --- Serveur MCP -------------------------------------------------------------------
+# czlonkowski/n8n-mcp, dans le même pod : il joint n8n sur localhost avec la clé
+# provisionnée, et s'expose sur son propre hôte.
+mcp:
+  enabled: true
+  image:
+    repository: ghcr.io/czlonkowski/n8n-mcp
+    tag: "2.84.0"
+    pullPolicy: IfNotPresent
+  # Hôte public du serveur MCP. Onyxia le renseigne.
+  hostname: ""
+  # Jeton Bearer exigé par /mcp. Vide : dérivé du mot de passe owner, donc
+  # stable et affichable dans les notes sans être stocké ailleurs.
+  token: ""
+  logLevel: info
+  # Protection SSRF des outils MCP. « moderate » autorise localhost (n8n dans
+  # le pod) et refuse les IP privées du cluster.
+  securityMode: moderate
+  corsOrigin: "*"
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+# --- Base de données -----------------------------------------------------------------
 database:
-  # sqlite : local sur PVC, mono-pod, suffit < 50 workflows simultanés.
-  # postgresdb : externe, scalable, requiert un PG provisionné à côté.
+  # sqlite : sur le volume, suffisant pour un usage personnel ou d'équipe.
+  # postgresdb : PostgreSQL externe (voir aussi discovery.postgresql).
   type: sqlite
   postgres:
     host: ""
@@ -88,22 +117,56 @@ database:
     schema: public
     ssl: false
 
-# ─── Persistance ─────────────────────────────────────────────────────────────
-# /home/node/.n8n : SQLite + credentials chiffrés + binary data uploads
+# Utilise le premier service PostgreSQL Onyxia du namespace (annotation
+# onyxia/discovery: postgres) quand database.type vaut sqlite.
+discovery:
+  postgresql: false
+
+# --- Persistance -----------------------------------------------------------------------
+# /home/node/.n8n : base SQLite, credentials chiffrées, fichiers binaires.
 persistence:
   enabled: true
   size: 5Gi
-  storageClassName: ""
+  # Vide : classe par défaut du cluster. « - » : aucune classe.
+  storageClass: ""
   accessMode: ReadWriteOnce
+  # Réutiliser un volume existant (par exemple celui d'un service supprimé).
+  existingClaim: ""
+  # Conserver volume et Secret après suppression de la release. Utile en ligne
+  # de commande, où le nom de release est stable ; dans Onyxia, chaque
+  # lancement porte un nom neuf et le volume resterait orphelin.
+  keepOnUninstall: false
 
-# ─── Sécurité pod (contraintes SSPCloud) ─────────────────────────────────────
-securityContext:
-  runAsNonRoot: true
-  runAsUser: 1000
-  runAsGroup: 1000
-  fsGroup: 1000
+# --- Réseau ------------------------------------------------------------------------------
+networking:
+  type: ClusterIP
+  service:
+    port: 5678
+  mcp:
+    port: 3000
 
-# ─── Ressources ──────────────────────────────────────────────────────────────
+ingress:
+  enabled: true
+  tls: true
+  ingressClassName: ""
+  hostname: ""
+  useCertManager: false
+  certManagerClusterIssuer: ""
+  # Temporisations longues : éditeur temps réel, exécutions et flux MCP.
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "64m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+
+route:
+  enabled: false
+  hostname: ""
+  annotations: {}
+  tls:
+    termination: edge
+  wildcardPolicy: None
+
+# --- Ressources du conteneur n8n ------------------------------------------------------------
 resources:
   requests:
     cpu: 200m
@@ -112,33 +175,36 @@ resources:
     cpu: 2000m
     memory: 2Gi
 
-# ─── Service ─────────────────────────────────────────────────────────────────
-service:
-  type: ClusterIP
-  port: 5678
+# --- Onyxia ------------------------------------------------------------------------------------
+userPreferences:
+  # Langue des notes affichées dans « Mes services » : fr ou en.
+  language: fr
 
-# ─── Ingress (TLS auto via cert-manager + nginx SSPCloud) ────────────────────
-ingress:
-  enabled: true
-  className: nginx
-  tls: true
-  annotations:
-    cert-manager.io/cluster-issuer: letsencrypt
-    nginx.ingress.kubernetes.io/proxy-body-size: "64m"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+global:
+  # Mise en veille depuis Onyxia : le pod est arrêté, le volume conservé.
+  suspend: false
 
-# ─── Probes ──────────────────────────────────────────────────────────────────
-probes:
-  liveness:
-    enabled: true
-    initialDelaySeconds: 60
-    periodSeconds: 30
-    timeoutSeconds: 5
-    failureThreshold: 3
-  readiness:
-    enabled: true
-    initialDelaySeconds: 15
-    periodSeconds: 10
-    timeoutSeconds: 5
-    failureThreshold: 3
+# --- Pod -----------------------------------------------------------------------------------------
+podSecurityContext:
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+# Commun aux trois conteneurs. L'image MCP déclare un utilisateur non numérique
+# (« nodejs ») que kubelet ne sait pas vérifier sous runAsNonRoot : elle tourne
+# donc elle aussi en uid 1000, sa base de nœuds étant déplacée sur un volume
+# temporaire inscriptible (éprouvé sur n8n-mcp 2.84.0).
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+nameOverride: ""
+fullnameOverride: ""

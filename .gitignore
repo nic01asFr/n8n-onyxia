@@ -9,3 +9,6 @@ charts/*/charts/
 .DS_Store
 .tmp-pages/
 .pages/
+
+# Vitrine générée par site/generate.mjs (la CI la publie sur gh-pages).
+site/dist/

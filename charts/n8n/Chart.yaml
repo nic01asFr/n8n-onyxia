@@ -1,22 +1,24 @@
-﻿apiVersion: v2
+apiVersion: v2
 name: n8n
-description: |
-  n8n workflow automation packagÃ© pour le catalogue Onyxia SSPCloud.
-  Persistance PVC, ingress TLS, webhooks externes activÃ©s, SQLite ou PostgreSQL.
-type: application
-version: 0.2.0
-appVersion: "1.80.3"
-icon: https://n8n.io/favicon.ico
+description: Workflow automation platform, with an optional MCP server to build and run workflows from an AI assistant.
+# Servie par les Pages du dépôt : Onyxia affiche l'icône avant l'installation,
+# elle ne peut donc pas venir du service lui-même.
+icon: https://nic01asfr.github.io/n8n-onyxia/assets/n8n.svg
 keywords:
   - automation
   - workflow
-  - n8n
   - low-code
-  - sspcloud
-  - onyxia
-home: https://n8n.io
+  - mcp
+  - llm
+home: https://nic01asfr.github.io/n8n-onyxia/
 sources:
+  - https://github.com/nic01asFr/n8n-onyxia
   - https://github.com/n8n-io/n8n
-maintainers:
-  - name: Nicolas LAVAL
-    email: laval.nicolas13@gmail.com
+  - https://github.com/czlonkowski/n8n-mcp
+type: application
+version: 1.0.0
+appVersion: "2.38.6"
+dependencies:
+  - name: library-chart
+    version: 2.1.7
+    repository: https://inseefrlab.github.io/helm-charts-interactive-services

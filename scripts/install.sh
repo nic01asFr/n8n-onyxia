@@ -1,23 +1,28 @@
 #!/usr/bin/env bash
 #
-# install.sh — Déploie n8n + n8n-mcp dans le namespace SSPCloud de l'utilisateur.
+# install.sh — Déploie n8n et son serveur MCP dans le namespace SSPCloud courant.
 #
-# Usage (depuis un terminal de pod Jupyter SSPCloud) :
+# Usage (depuis un terminal de pod Jupyter SSPCloud lancé en rôle Kubernetes Edit) :
 #   curl -sL https://nic01asfr.github.io/n8n-onyxia/install.sh | bash
 #
+# Ce script fait en ligne de commande ce que fait le formulaire Onyxia : il
+# calcule les hôtes publics, génère le mot de passe owner, installe le chart,
+# puis enregistre le service dans « Mes services ». Le compte owner et la clé API
+# du MCP sont créés par le pod lui-même.
+#
 # Variables d'env optionnelles :
-#   OWNER_EMAIL     : email du compte owner n8n. Sinon dérivé du git config ou prompt.
-#   NAMESPACE       : namespace cible. Sinon $KUBERNETES_NAMESPACE ou current context.
-#   N8N_VERSION     : version chart n8n (sinon latest)
-#   MCP_VERSION     : version chart n8n-mcp (sinon latest)
-#   SKIP_MCP        : "true" pour n'installer que n8n
-#   HELM_REPO_URL   : surcharger l'URL du Helm repo (debug)
-#   HELM_CONFIG_HOME / HELM_CACHE_HOME / HELM_DATA_HOME : surcharge des répertoires Helm
-#     (par défaut /tmp/helm/* — certains pods Jupyter ont /home/onyxia en lecture seule)
+#   OWNER_EMAIL    : email du compte owner n8n. Sinon git config, sinon demandé.
+#   NAMESPACE      : namespace cible. Sinon $KUBERNETES_NAMESPACE ou contexte courant.
+#   RELEASE        : nom de la release Helm (défaut : n8n).
+#   CHART_VERSION  : version du chart (défaut : la plus récente).
+#   SKIP_MCP       : "true" pour installer n8n sans serveur MCP.
+#   HELM_REPO_URL  : surcharge de l'URL du dépôt Helm (tests).
+#   HELM_CONFIG_HOME / HELM_CACHE_HOME / HELM_DATA_HOME : répertoires Helm
+#     (défaut /tmp/helm/* : certains pods Jupyter ont /home/onyxia en lecture seule).
 #
 set -euo pipefail
 
-# ─── Couleurs ────────────────────────────────────────────────────────────────
+# --- Affichage -----------------------------------------------------------------
 if [[ -t 1 ]]; then
   BOLD=$'\033[1m'; GREEN=$'\033[32m'; YELLOW=$'\033[33m'; RED=$'\033[31m'; CYAN=$'\033[36m'; RESET=$'\033[0m'
 else
@@ -30,277 +35,132 @@ warn() { echo "${YELLOW}[!!]${RESET} $*"; }
 err()  { echo "${RED}[KO]${RESET} $*" >&2; }
 die()  { err "$@"; exit 1; }
 
-# ─── 1. Prérequis ────────────────────────────────────────────────────────────
+# --- 1. Prérequis ----------------------------------------------------------------
 log "Vérification des prérequis..."
 command -v kubectl >/dev/null || die "kubectl introuvable. Lance ce script dans un service Jupyter SSPCloud."
 command -v helm    >/dev/null || die "helm introuvable. Lance ce script dans un service Jupyter SSPCloud."
 
-# Vérifier l'accès cluster
-if ! kubectl auth can-i get pods >/dev/null 2>&1; then
-  die "Pas d'accès au cluster K8s. Le kubeconfig SSPCloud n'est-il pas configuré ?"
-fi
-
-# Sur certains pods Jupyter, /home/onyxia/ est en lecture seule → helm repo add échoue.
-# Rediriger la config Helm vers /tmp (surcharge possible via HELM_*_HOME).
 export HELM_CONFIG_HOME="${HELM_CONFIG_HOME:-/tmp/helm/config}"
 export HELM_CACHE_HOME="${HELM_CACHE_HOME:-/tmp/helm/cache}"
 export HELM_DATA_HOME="${HELM_DATA_HOME:-/tmp/helm/data}"
 mkdir -p "$HELM_CONFIG_HOME" "$HELM_CACHE_HOME" "$HELM_DATA_HOME"
 
-# ─── 2. Détection du namespace ───────────────────────────────────────────────
+# --- 2. Namespace et droits ------------------------------------------------------
 NS="${NAMESPACE:-${KUBERNETES_NAMESPACE:-}}"
 if [[ -z "$NS" ]]; then
   NS=$(kubectl config view --minify -o jsonpath='{..namespace}' 2>/dev/null || echo "")
 fi
 [[ -z "$NS" ]] && die "Impossible de déterminer le namespace. Définir NAMESPACE=user-XXX."
+case "$NS" in
+  user-*|projet-*) ;;
+  *) warn "Namespace '$NS' : ce script vise les namespaces SSPCloud user-* et projet-*." ;;
+esac
+ok "Namespace cible : ${BOLD}$NS${RESET}"
 
-if [[ "$NS" != user-* ]]; then
-  warn "Namespace '$NS' ne commence pas par 'user-'. Ce script vise SSPCloud Onyxia."
+# Le rôle « Edit » du pod Jupyter est requis : « View » ne peut ni installer ni
+# lire les Secrets, dont Helm a besoin pour lister ses releases.
+kubectl auth can-i create deployments -n "$NS" >/dev/null 2>&1 \
+  || die "Pas le droit de créer des Deployments dans $NS. Relance ton pod Jupyter avec le rôle Kubernetes Edit."
+kubectl auth can-i get secrets -n "$NS" >/dev/null 2>&1 \
+  || die "Pas le droit de lire les Secrets dans $NS. Relance ton pod Jupyter avec le rôle Kubernetes Edit."
+
+RELEASE="${RELEASE:-n8n}"
+DOMAIN="${ONYXIA_DOMAIN:-user.lab.sspcloud.fr}"
+N8N_HOST="${NS}-${RELEASE}.${DOMAIN}"
+MCP_HOST="${NS}-${RELEASE}-mcp.${DOMAIN}"
+
+# --- 3. Release existante ----------------------------------------------------------
+EXISTING_CHART=$(helm list -n "$NS" --filter "^${RELEASE}\$" -o json 2>/dev/null \
+  | sed -n 's/.*"chart":"\([^"]*\)".*/\1/p')
+if [[ "$EXISTING_CHART" == n8n-0.* ]]; then
+  die "La release '$RELEASE' utilise le chart $EXISTING_CHART (n8n 1.x).
+Le chart 1.0 passe à n8n 2.x et range ses données autrement : pas de mise à jour automatique.
+Pour installer à côté : RELEASE=n8n-v2 bash install.sh
+Pour migrer : sauvegarde d'abord /home/node/.n8n et la clé encryptionKey, puis suis
+https://nic01asfr.github.io/n8n-onyxia/#migration"
+fi
+if helm status n8n-mcp -n "$NS" >/dev/null 2>&1; then
+  warn "Une ancienne release 'n8n-mcp' existe : le serveur MCP fait désormais partie du chart n8n."
+  warn "Une fois la nouvelle installation vérifiée : helm uninstall n8n-mcp -n $NS"
 fi
 
-IDEP="${NS#user-}"
-ok "Namespace cible : ${BOLD}$NS${RESET} (idep: $IDEP)"
-
-# Droits K8s : le rôle « Edit » du pod Jupyter est requis (pas « View »).
-if ! kubectl auth can-i create deployments -n "$NS" >/dev/null 2>&1; then
-  die "Pas le droit de créer des Deployments dans $NS.
-Relance ton pod Jupyter avec kubernetes.role = Edit (pas View).
-Vérifie : kubectl auth can-i create deployments -n $NS"
-fi
-if ! kubectl auth can-i get secrets -n "$NS" >/dev/null 2>&1; then
-  die "Pas le droit de lire les Secrets dans $NS (requis pour helm list et le provisioning).
-Relance ton pod Jupyter avec kubernetes.role = Edit."
-fi
-
-# ─── 3. Email owner ──────────────────────────────────────────────────────────
+# --- 4. Email et mot de passe owner ------------------------------------------------
 if [[ -z "${OWNER_EMAIL:-}" ]]; then
   OWNER_EMAIL=$(git config --global user.email 2>/dev/null || echo "")
 fi
-if [[ -z "$OWNER_EMAIL" ]] && [[ -t 0 ]]; then
+if [[ -z "$OWNER_EMAIL" ]] && [[ -r /dev/tty ]]; then
   printf "Email du compte owner n8n : "
-  read -r OWNER_EMAIL
+  read -r OWNER_EMAIL < /dev/tty
 fi
 [[ -z "$OWNER_EMAIL" ]] && die "OWNER_EMAIL requis. Définir la variable ou git config --global user.email."
-ok "Owner email : $OWNER_EMAIL"
+ok "Compte owner : $OWNER_EMAIL"
 
-# ─── 4. Helm repo ────────────────────────────────────────────────────────────
+SECRET_NAME="$RELEASE"
+[[ "$RELEASE" != *n8n* ]] && SECRET_NAME="${RELEASE}-n8n"
+
+# Mise à jour : on repasse le mot de passe déjà en place, pour que les notes
+# continuent de l'afficher. Premier déploiement : mot de passe conforme à la
+# politique n8n (majuscule et chiffre), comme le ferait Onyxia.
+OWNER_PASSWORD=$(kubectl get secret "$SECRET_NAME" -n "$NS" -o jsonpath='{.data.OWNER_PASSWORD}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+if [[ -z "$OWNER_PASSWORD" ]]; then
+  # « || true » : head ferme le tube, tr reçoit SIGPIPE, et pipefail l'aurait
+  # transformé en échec du script.
+  OWNER_PASSWORD="N8n-$(LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom | head -c 20 || true)"
+fi
+
+# --- 5. Installation -----------------------------------------------------------------
 HELM_REPO_URL="${HELM_REPO_URL:-https://nic01asfr.github.io/n8n-onyxia}"
-log "Ajout du Helm repo : $HELM_REPO_URL"
-helm repo add nic01asfr "$HELM_REPO_URL" --force-update >/dev/null
-helm repo update nic01asfr >/dev/null
-ok "Helm repo OK"
+log "Dépôt Helm : $HELM_REPO_URL"
+helm repo add n8n-onyxia "$HELM_REPO_URL" --force-update >/dev/null
+helm repo update n8n-onyxia >/dev/null
 
-# ─── 5. Install n8n ──────────────────────────────────────────────────────────
-N8N_HOST="user-${IDEP}-n8n.user.lab.sspcloud.fr"
-N8N_RELEASE="n8n"
-
-log "Déploiement de n8n sur https://$N8N_HOST ..."
 HELM_ARGS=(
   --namespace "$NS"
-  -f "https://nic01asfr.github.io/n8n-onyxia/values-sspcloud.yaml"
-  --set "n8n.host=$N8N_HOST"
-  --set "owner.email=$OWNER_EMAIL"
+  --set "ingress.hostname=$N8N_HOST"
+  --set "ingress.ingressClassName=onyxia"
+  --set "mcp.hostname=$MCP_HOST"
+  --set "security.email=$OWNER_EMAIL"
+  --set "security.password=$OWNER_PASSWORD"
+  # Nom de release stable en ligne de commande : garder volume et Secret
+  # permet de réinstaller sans perdre les workflows.
+  --set "persistence.keepOnUninstall=true"
 )
-[[ -n "${N8N_VERSION:-}" ]] && HELM_ARGS+=(--version "$N8N_VERSION")
+[[ "${SKIP_MCP:-false}" == "true" ]] && HELM_ARGS+=(--set "mcp.enabled=false")
+[[ -n "${CHART_VERSION:-}" ]] && HELM_ARGS+=(--version "$CHART_VERSION")
 
-helm upgrade --install "$N8N_RELEASE" nic01asfr/n8n "${HELM_ARGS[@]}" --wait --timeout 5m
+log "Déploiement de n8n sur https://$N8N_HOST ..."
+helm upgrade --install "$RELEASE" n8n-onyxia/n8n "${HELM_ARGS[@]}" --wait --timeout 10m >/dev/null
 ok "n8n déployé"
 
-# ─── 6. Auto-provisioning côté client (kubectl du user) ──────────────────────
-# Pourquoi côté client : SSPCloud refuse create/delete sur Role dans le namespace
-# user → un Job in-cluster avec RBAC custom ne passe pas. Le script fait à la place
-# le owner-setup + login + create-api-key + patch-Secret depuis ta machine.
-#
-# Prérequis : curl + jq (installés par défaut dans tous les pods Jupyter SSPCloud).
-
-PROVISION_TIMEOUT="${PROVISION_TIMEOUT:-180}"
-
-provision_n8n_api_key() {
-  command -v curl >/dev/null || { warn "curl introuvable, skip provisioning"; return 0; }
-  command -v jq   >/dev/null || { warn "jq introuvable, skip provisioning"; return 0; }
-
-  # Skip si la clé existe déjà.
-  local existing
-  existing=$(kubectl -n "$NS" get secret n8n -o jsonpath='{.data.N8N_API_KEY}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
-  if [[ ${#existing} -gt 20 ]]; then
-    ok "N8N_API_KEY déjà présente (longueur ${#existing}). Skip provisioning."
-    return 0
-  fi
-
-  log "Attente n8n /healthz public..."
-  local n8n_pub="https://$N8N_HOST"
-  local i ready=0
-  for i in $(seq 1 60); do
-    if curl -sf "$n8n_pub/healthz" >/dev/null 2>&1; then
-      ready=1; break
-    fi
-    sleep 3
-  done
-  if [[ $ready -ne 1 ]]; then
-    warn "n8n pas joignable sur $n8n_pub après 3 min. Skip provisioning — la clé API devra être créée manuellement via l'UI."
-    return 0
-  fi
-  ok "n8n joignable"
-
-  # Lire les credentials owner du Secret (créés par le chart).
-  local owner_email owner_password owner_first owner_last
-  owner_email=$(kubectl -n "$NS" get secret n8n -o jsonpath='{.data.ownerEmail}' | base64 -d)
-  owner_password=$(kubectl -n "$NS" get secret n8n -o jsonpath='{.data.ownerPassword}' | base64 -d)
-  owner_first=$(kubectl -n "$NS" get secret n8n -o jsonpath='{.data.ownerFirstName}' | base64 -d)
-  owner_last=$(kubectl -n "$NS" get secret n8n -o jsonpath='{.data.ownerLastName}' | base64 -d)
-
-  # Tentative setup owner. 200/201 = succès. 400 = déjà setup (OK on continue).
-  log "Setup owner..."
-  local setup_http setup_body
-  setup_body=$(jq -n --arg e "$owner_email" --arg p "$owner_password" --arg f "$owner_first" --arg l "$owner_last" \
-    '{email:$e,firstName:$f,lastName:$l,password:$p}')
-  setup_http=$(curl -s -o /tmp/n8n-setup.json -w "%{http_code}" \
-    -X POST "$n8n_pub/rest/owner/setup" \
-    -H "Content-Type: application/json" \
-    -d "$setup_body")
-  if [[ "$setup_http" =~ ^20[01]$ ]]; then
-    ok "Owner créé"
+# --- 6. Visibilité dans « Mes services » ---------------------------------------------
+# Onyxia range les métadonnées d'un service (propriétaire, nom affiché, partage)
+# dans un Secret qu'il crée lui-même après une installation depuis le catalogue.
+# Le chart ne le crée pas : Onyxia échouerait alors en le recréant. On le pose
+# donc ici, et seulement s'il manque.
+ONYXIA_SECRET="sh.onyxia.release.v1.${RELEASE}"
+if ! kubectl get secret "$ONYXIA_SECRET" -n "$NS" >/dev/null 2>&1; then
+  # Projet personnel : le propriétaire est l'idep. Projet de groupe : Onyxia ne
+  # montre un service qu'à son propriétaire ou s'il est partagé ; faute de
+  # connaître l'idep ici (ONYXIA_IDEP pour le préciser), on le partage au groupe.
+  if [[ "$NS" == user-* ]]; then
+    OWNER_ID="${NS#user-}"; SHARE="false"
   else
-    log "Setup HTTP $setup_http (probable owner déjà existant)"
+    OWNER_ID="${ONYXIA_IDEP:-}"; SHARE=$([[ -n "$OWNER_ID" ]] && echo "false" || echo "true")
   fi
-
-  # Login avec les credentials du Secret.
-  # n8n 1.80+ attend "email", versions plus anciennes "emailOrLdapLoginId" — on envoie les deux.
-  log "Login..."
-  local login_http login_body
-  login_body=$(jq -n --arg e "$owner_email" --arg p "$owner_password" \
-    '{email:$e,emailOrLdapLoginId:$e,password:$p}')
-  login_http=$(curl -s -c /tmp/n8n-cookies.txt -o /tmp/n8n-login.json -w "%{http_code}" \
-    -X POST "$n8n_pub/rest/login" \
-    -H "Content-Type: application/json" \
-    -d "$login_body")
-  if [[ "$login_http" != "200" ]]; then
-    warn "Login échec HTTP $login_http : $(head -c 200 /tmp/n8n-login.json)"
-    warn "Les credentials du Secret ne matchent pas l'owner existant."
-    warn "Soit l'owner a été setup via l'UI avec un autre email/password,"
-    warn "soit créer la clé manuellement dans l'UI puis :"
-    warn "  kubectl -n $NS patch secret n8n --type=merge -p '{\"data\":{\"N8N_API_KEY\":\"<b64 clé>\"}}'"
-    return 0
-  fi
-  ok "Login OK"
-
-  # Création clé API.
-  log "Création clé API..."
-  local key_body key_resp raw_key
-  # expiresAt: null = pas d'expiration (n8n exige le champ explicitement)
-  key_body=$(jq -n '{label:"auto-provisioned",expiresAt:null}')
-  key_resp=$(curl -s -b /tmp/n8n-cookies.txt \
-    -X POST "$n8n_pub/rest/api-keys" \
-    -H "Content-Type: application/json" \
-    -d "$key_body")
-  # Plusieurs formats possibles selon la version n8n.
-  raw_key=$(echo "$key_resp" | jq -r '
-    .data.rawApiKey // .rawApiKey //
-    .data.apiKey // .apiKey //
-    .data.key // .key //
-    empty
-  ' 2>/dev/null)
-  if [[ -z "$raw_key" ]] || [[ "$raw_key" == "null" ]]; then
-    warn "Échec extraction clé API."
-    warn "Réponse n8n (premiers 500 char) : $(echo "$key_resp" | head -c 500)"
-    warn "Crée manuellement via UI Settings → API → Create API Key, puis :"
-    warn "  KEY=<la clé>"
-    warn "  kubectl -n $NS patch secret n8n --type=merge -p \"{\\\"data\\\":{\\\"N8N_API_KEY\\\":\\\"\$(echo -n \$KEY | base64 -w0)\\\"}}\""
-    warn "  kubectl -n $NS rollout restart deploy/n8n-mcp"
-    return 0
-  fi
-  ok "Clé API créée (longueur ${#raw_key})"
-
-  # Patch Secret K8s avec la clé.
-  local key_b64
-  key_b64=$(printf '%s' "$raw_key" | base64 | tr -d '\n')
-  kubectl -n "$NS" patch secret n8n --type=merge \
-    -p "$(jq -n --arg k "$key_b64" '{data:{N8N_API_KEY:$k}}')" >/dev/null
-  ok "Secret n8n patché avec N8N_API_KEY"
-
-  # Si n8n-mcp est déjà déployé, le redémarrer pour qu'il prenne la nouvelle clé.
-  # (Les env vars d'un pod ne se rafraîchissent pas tant que le pod n'est pas recréé.)
-  if kubectl -n "$NS" get deploy n8n-mcp >/dev/null 2>&1; then
-    log "Restart de n8n-mcp pour prise en compte de la nouvelle N8N_API_KEY..."
-    kubectl -n "$NS" rollout restart deploy/n8n-mcp >/dev/null
-    kubectl -n "$NS" rollout status deploy/n8n-mcp --timeout=60s >/dev/null 2>&1 || warn "Timeout rollout n8n-mcp"
-    ok "n8n-mcp redémarré"
-  fi
-
-  # Cleanup
-  rm -f /tmp/n8n-setup.json /tmp/n8n-login.json /tmp/n8n-cookies.txt
-}
-
-provision_n8n_api_key
-
-# ─── 7. Install n8n-mcp (optionnel) ──────────────────────────────────────────
-if [[ "${SKIP_MCP:-false}" != "true" ]]; then
-  MCP_HOST="user-${IDEP}-n8n-mcp.user.lab.sspcloud.fr"
-  MCP_RELEASE="n8n-mcp"
-  N8N_API_URL_INTERNAL="http://n8n.${NS}.svc.cluster.local:5678"
-
-  log "Déploiement de n8n-mcp sur https://$MCP_HOST ..."
-  MCP_ARGS=(
-    --namespace "$NS"
-    -f "https://nic01asfr.github.io/n8n-onyxia/values-sspcloud-mcp.yaml"
-    --set "mcp.host=$MCP_HOST"
-    --set "n8n.apiUrl=$N8N_API_URL_INTERNAL"
-  )
-  [[ -n "${MCP_VERSION:-}" ]] && MCP_ARGS+=(--version "$MCP_VERSION")
-
-  helm upgrade --install "$MCP_RELEASE" nic01asfr/n8n-mcp "${MCP_ARGS[@]}" --wait --timeout 3m
-  ok "n8n-mcp déployé"
+  kubectl create secret generic "$ONYXIA_SECRET" -n "$NS" --type=onyxia.sh/release.v1 \
+    --from-literal=owner="$OWNER_ID" \
+    --from-literal=friendlyName="n8n" \
+    --from-literal=catalog="n8n-onyxia" \
+    --from-literal=share="$SHARE" >/dev/null \
+    && ok "Service enregistré pour « Mes services »" \
+    || warn "Secret $ONYXIA_SECRET non créé : le service tourne mais peut ne pas apparaître dans Onyxia."
 fi
 
-# ─── 8. Récap final ──────────────────────────────────────────────────────────
-OWNER_PASSWORD=$(kubectl -n "$NS" get secret n8n -o jsonpath='{.data.ownerPassword}' 2>/dev/null | base64 -d || echo "")
-N8N_API_KEY=$(kubectl -n "$NS" get secret n8n -o jsonpath='{.data.N8N_API_KEY}' 2>/dev/null | base64 -d || echo "")
-MCP_AUTH=""
-if [[ "${SKIP_MCP:-false}" != "true" ]]; then
-  MCP_AUTH=$(kubectl -n "$NS" get secret n8n-mcp -o jsonpath='{.data.AUTH_TOKEN}' 2>/dev/null | base64 -d || echo "")
-fi
-
+# --- 7. Récapitulatif ------------------------------------------------------------------
+echo
+helm get notes "$RELEASE" -n "$NS" | sed '1d'
+echo
 cat <<EOF
-
-${BOLD}╭──────────────────────────────────────────────────────────────────────╮${RESET}
-${BOLD}│  ${GREEN}✓ Déploiement terminé${RESET}${BOLD}                                              │${RESET}
-${BOLD}╰──────────────────────────────────────────────────────────────────────╯${RESET}
-
-${BOLD}n8n — UI workflow automation${RESET}
-  URL       : ${CYAN}https://$N8N_HOST${RESET}
-  Owner     : $OWNER_EMAIL
-  Password  : ${YELLOW}$OWNER_PASSWORD${RESET}
-  API key   : ${YELLOW}${N8N_API_KEY:0:30}...${N8N_API_KEY: -10}${RESET}
-
-EOF
-
-if [[ -n "$MCP_AUTH" ]]; then
-  cat <<EOF
-${BOLD}n8n-mcp — Serveur MCP pour LLM${RESET}
-  Endpoint  : ${CYAN}https://$MCP_HOST/mcp${RESET}
-  Bearer    : ${YELLOW}$MCP_AUTH${RESET}
-
-${BOLD}Connexion Claude Code :${RESET}
-  ${GREEN}claude mcp add n8n --transport http https://$MCP_HOST/mcp \\
-    --header "Authorization: Bearer $MCP_AUTH"${RESET}
-
-${BOLD}Connexion Claude Desktop (claude_desktop_config.json) :${RESET}
-${CYAN}  {
-    "mcpServers": {
-      "n8n": {
-        "command": "npx",
-        "args": ["-y", "mcp-remote", "https://$MCP_HOST/mcp",
-                 "--header", "Authorization: Bearer $MCP_AUTH"]
-      }
-    }
-  }${RESET}
-
-EOF
-fi
-
-cat <<EOF
-${BOLD}À sauvegarder absolument${RESET} (récupération impossible si perdu) :
-  - ${YELLOW}encryptionKey${RESET} : kubectl -n $NS get secret n8n -o jsonpath='{.data.encryptionKey}' | base64 -d
-  - ${YELLOW}ownerPassword${RESET} : kubectl -n $NS get secret n8n -o jsonpath='{.data.ownerPassword}' | base64 -d
-
+${BOLD}Désinstaller${RESET} (volume et Secret sont conservés) :
+  helm uninstall $RELEASE -n $NS && kubectl delete secret $ONYXIA_SECRET -n $NS
 EOF

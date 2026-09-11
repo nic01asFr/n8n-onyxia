@@ -1,42 +1,115 @@
+{{/*
+Onyxia affiche ce fichier en markdown dans la fenêtre du service. Deux règles
+lues dans le code d'Onyxia :
+  - le bouton « Ouvrir » suit la première URL d'Ingress citée ici : l'éditeur
+    n8n vient donc en premier ;
+  - le bouton « Copier le mot de passe » cherche « password: <valeur> » : la
+    ligne du mot de passe reste sans mise en forme.
+Ces notes sont conservées par Helm dans le Secret de la release : quiconque lit
+les Secrets du namespace lit aussi le mot de passe qu'elles affichent.
+*/}}
+{{- $fr := eq (.Values.userPreferences.language | default "fr") "fr" -}}
+{{- $url := include "n8n.baseUrl" . -}}
+{{- $hasPassword := .Values.security.password -}}
+{{- $mcpUrl := printf "https://%s/mcp" .Values.mcp.hostname -}}
+{{- if $fr }}
+### Accès à n8n
 
-╭──────────────────────────────────────────────────────────────────────╮
-│  n8n est en cours de déploiement sur SSPCloud Onyxia.                │
-╰──────────────────────────────────────────────────────────────────────╯
-
-URL d'accès :
-  {{ .Values.n8n.protocol }}://{{ .Values.n8n.host }}
-
-Premier démarrage :
-  1. Ouvrir l'URL ci-dessus dans le navigateur.
-  2. Créer le compte owner (email + mot de passe). C'est l'admin.
-  3. Optionnellement, activer la 2FA dans Settings.
-
-Webhooks externes :
-  Base URL = {{ .Values.n8n.protocol }}://{{ .Values.n8n.host }}/webhook/...
-  À utiliser dans n'importe quel nœud Webhook ou Form Trigger.
-
-Persistance :
-  PVC = {{ include "n8n.fullname" . }} ({{ .Values.persistence.size }})
-  Annotation helm.sh/resource-policy: keep — les données survivent à un
-  `helm uninstall`. Pour TOUT supprimer, faire ensuite :
-    kubectl delete pvc {{ include "n8n.fullname" . }}
-    kubectl delete secret {{ include "n8n.fullname" . }}
-
-Sauvegarde critique :
-  La clé N8N_ENCRYPTION_KEY est stockée dans le Secret K8s
-  `{{ include "n8n.fullname" . }}`. Si tu perds ce Secret ET que tu
-  redéployes, TOUS les credentials existants deviennent illisibles.
-  Pour l'exporter :
-    kubectl get secret {{ include "n8n.fullname" . }} \
-      -o jsonpath='{.data.encryptionKey}' | base64 -d
-
-Base de données : {{ .Values.database.type }}
-{{- if eq .Values.database.type "postgresdb" }}
-  PostgreSQL externe : {{ .Values.database.postgres.host }}:{{ .Values.database.postgres.port }}/{{ .Values.database.postgres.database }}
+- Éditeur : [{{ $url }}]({{ $url }})
+- Identifiant : `{{ .Values.security.email | default "(à créer au premier accès)" }}`
+{{- if $hasPassword }}
+- Mot de passe / password: {{ include "n8n.ownerPassword" . }}
 {{- else }}
-  SQLite locale dans /home/node/.n8n/database.sqlite (sur PVC).
+- Mot de passe : tiré au sort. Pour le lire :
+  `kubectl get secret {{ include "n8n.secretName" . }} -n {{ .Release.Namespace }} -o jsonpath='{.data.OWNER_PASSWORD}' | base64 -d`
+{{- end }}
+{{- if not .Values.provisioning.enabled }}
+
+**Attention** : le provisioning est désactivé. Créez le compte owner sans
+attendre : le premier visiteur de l'URL pourrait le faire à votre place.
+{{- end }}
+{{- if .Values.mcp.enabled }}
+
+### Piloter n8n depuis un assistant (MCP)
+
+- Adresse MCP : `{{ $mcpUrl }}`
+- Jeton : `{{ include "n8n.mcpToken" . }}`
+
+Claude Code :
+
+```bash
+claude mcp add n8n --transport http {{ $mcpUrl }} --header "Authorization: Bearer {{ include "n8n.mcpToken" . }}"
+```
+
+La clé API n8n du serveur MCP est créée automatiquement, avec des droits
+limités aux workflows, exécutions, étiquettes, tables, credentials et dossiers.
 {{- end }}
 
-État du déploiement :
-  kubectl get pod -l app.kubernetes.io/instance={{ .Release.Name }}
-  kubectl logs -l app.kubernetes.io/instance={{ .Release.Name }} -f
+### Bon à savoir
+
+- Webhooks : `{{ $url }}webhook/...`
+{{- if .Values.persistence.enabled }}
+{{- if include "n8n.postgresMode" . }}
+- Workflows et credentials sont dans PostgreSQL ; le volume `{{ .Values.persistence.existingClaim | default (include "library-chart.fullname" .) }}` ({{ .Values.persistence.size }}) garde les fichiers binaires et la clé API du MCP.
+{{- else }}
+- Workflows, credentials et base SQLite vivent sur le volume `{{ .Values.persistence.existingClaim | default (include "library-chart.fullname" .) }}` ({{ .Values.persistence.size }}).
+{{- end }}
+{{- if not .Values.persistence.keepOnUninstall }}
+  Supprimer le service supprime ce volume : exportez vos workflows avant.
+{{- end }}
+{{- else }}
+- **Attention** : persistance désactivée, tout est perdu au redémarrage.
+{{- end }}
+- La clé de chiffrement des credentials est dans le Secret `{{ include "n8n.secretName" . }}` (clé `N8N_ENCRYPTION_KEY`) : sauvegardez-la.
+- Documentation : [nic01asfr.github.io/n8n-onyxia](https://nic01asfr.github.io/n8n-onyxia/)
+{{- else }}
+### n8n access
+
+- Editor: [{{ $url }}]({{ $url }})
+- Login: `{{ .Values.security.email | default "(create it on first visit)" }}`
+{{- if $hasPassword }}
+- Password: {{ include "n8n.ownerPassword" . }}
+{{- else }}
+- The password was generated. Read it with:
+  `kubectl get secret {{ include "n8n.secretName" . }} -n {{ .Release.Namespace }} -o jsonpath='{.data.OWNER_PASSWORD}' | base64 -d`
+{{- end }}
+{{- if not .Values.provisioning.enabled }}
+
+**Warning**: provisioning is disabled. Create the owner account right away:
+the first visitor of the URL could do it instead of you.
+{{- end }}
+{{- if .Values.mcp.enabled }}
+
+### Drive n8n from an assistant (MCP)
+
+- MCP endpoint: `{{ $mcpUrl }}`
+- Token: `{{ include "n8n.mcpToken" . }}`
+
+Claude Code:
+
+```bash
+claude mcp add n8n --transport http {{ $mcpUrl }} --header "Authorization: Bearer {{ include "n8n.mcpToken" . }}"
+```
+
+The MCP server's n8n API key is created automatically, scoped to workflows,
+executions, tags, data tables, credentials and folders.
+{{- end }}
+
+### Good to know
+
+- Webhooks: `{{ $url }}webhook/...`
+{{- if .Values.persistence.enabled }}
+{{- if include "n8n.postgresMode" . }}
+- Workflows and credentials are stored in PostgreSQL; volume `{{ .Values.persistence.existingClaim | default (include "library-chart.fullname" .) }}` ({{ .Values.persistence.size }}) keeps binary files and the MCP API key.
+{{- else }}
+- Workflows, credentials and the SQLite database live on volume `{{ .Values.persistence.existingClaim | default (include "library-chart.fullname" .) }}` ({{ .Values.persistence.size }}).
+{{- end }}
+{{- if not .Values.persistence.keepOnUninstall }}
+  Deleting the service deletes this volume: export your workflows first.
+{{- end }}
+{{- else }}
+- **Warning**: persistence is disabled, everything is lost on restart.
+{{- end }}
+- The credentials encryption key is in Secret `{{ include "n8n.secretName" . }}` (key `N8N_ENCRYPTION_KEY`): back it up.
+- Documentation: [nic01asfr.github.io/n8n-onyxia](https://nic01asfr.github.io/n8n-onyxia/)
+{{- end }}

@@ -1,0 +1,11 @@
+{{- if .Values.provisioning.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "library-chart.fullname" . }}-provision
+  labels:
+    {{- include "library-chart.labels" . | nindent 4 }}
+data:
+  provision.mjs: |
+    {{- .Files.Get "files/provision.mjs" | nindent 4 }}
+{{- end }}

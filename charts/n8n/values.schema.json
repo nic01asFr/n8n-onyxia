@@ -2,124 +2,215 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
-    "n8n": {
+    "service": {
       "type": "object",
-      "description": "Configuration de l'instance n8n",
+      "title": "Service",
+      "description": "n8n container image",
       "properties": {
-        "host": {
-          "type": "string",
-          "title": "Domaine public",
-          "description": "Hostname accessible depuis Internet (TLS auto). Sert d'URL aux webhooks externes.",
-          "default": "",
-          "x-onyxia": {
-            "overwriteDefaultWith": "n8n-{{k8s.randomSubdomain}}.user-{{user.idep}}.lab.sspcloud.fr"
+        "image": {
+          "type": "object",
+          "properties": {
+            "repository": {
+              "type": "string",
+              "title": "Image",
+              "default": "docker.n8n.io/n8nio/n8n",
+              "x-onyxia": {
+                "hidden": true
+              }
+            },
+            "tag": {
+              "type": "string",
+              "title": "n8n version",
+              "description": "Pinned n8n release. Changing it on a running instance may trigger database migrations.",
+              "default": "2.38.6",
+              "enum": ["2.38.6"]
+            },
+            "pullPolicy": {
+              "type": "string",
+              "default": "IfNotPresent",
+              "enum": ["IfNotPresent", "Always", "Never"],
+              "x-onyxia": {
+                "hidden": true
+              }
+            }
           }
-        },
-        "timezone": {
-          "type": "string",
-          "title": "Fuseau horaire",
-          "description": "Utilisé par n8n pour les nœuds Schedule/Cron.",
-          "default": "Europe/Paris",
-          "enum": [
-            "Europe/Paris",
-            "Europe/London",
-            "UTC",
-            "America/New_York",
-            "America/Los_Angeles",
-            "Asia/Tokyo"
-          ]
-        },
-        "logLevel": {
-          "type": "string",
-          "title": "Niveau de log",
-          "default": "info",
-          "enum": ["error", "warn", "info", "verbose", "debug"]
-        },
-        "encryptionKey": {
-          "type": "string",
-          "title": "Clé de chiffrement des credentials",
-          "description": "Chiffre les credentials stockées par n8n. À SAUVEGARDER PRÉCIEUSEMENT : si perdue, tous les credentials sont irrécupérables. Laissée vide = auto-générée au déploiement.",
-          "default": "",
-          "x-onyxia": {
-            "hidden": false,
-            "overwriteDefaultWith": "{{ k8s.randomSubdomain }}{{ k8s.randomSubdomain }}"
-          }
-        },
-        "executionsMode": {
-          "type": "string",
-          "title": "Mode d'exécution",
-          "description": "regular : workflows exécutés dans le pod n8n. queue : nécessite Redis (pas géré par ce chart).",
-          "default": "regular",
-          "enum": ["regular", "queue"]
         }
       }
     },
-    "owner": {
+    "security": {
       "type": "object",
-      "title": "Compte propriétaire n8n",
-      "description": "Compte admin de l'instance. Sert au login dans l'UI n8n.",
+      "title": "Security",
+      "description": "Owner account and network access",
       "properties": {
         "email": {
           "type": "string",
-          "title": "Email",
-          "description": "Email du compte owner (login UI n8n).",
+          "title": "Owner login",
+          "description": "Email used to sign in to n8n.",
           "default": "",
           "x-onyxia": {
-            "overwriteDefaultWith": "{{ user.email }}"
+            "overwriteDefaultWith": "{{user.email}}"
           }
-        },
-        "firstName": {
-          "type": "string",
-          "title": "Prénom",
-          "default": "Admin"
-        },
-        "lastName": {
-          "type": "string",
-          "title": "Nom",
-          "default": "n8n"
         },
         "password": {
           "type": "string",
-          "title": "Mot de passe",
-          "description": "Si vide, mot de passe aléatoire généré. Récupérable via kubectl get secret.",
-          "default": ""
+          "title": "Owner password",
+          "description": "Shown in the service notes. n8n requires an uppercase letter and a digit: the chart prefixes the value with 'N8n-' when they are missing.",
+          "default": "",
+          "render": "password",
+          "x-onyxia": {
+            "overwriteDefaultWith": "{{service.oneTimePassword}}"
+          }
+        },
+        "allowlist": {
+          "type": "object",
+          "title": "IP allowlist",
+          "description": "Only accept requests from the listed IP ranges",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "title": "Enable IP protection",
+              "description": "Webhooks called from outside the allowlist will be rejected.",
+              "default": false,
+              "x-onyxia": {
+                "overwriteDefaultWith": "region.defaultIpProtection"
+              }
+            },
+            "ip": {
+              "type": "string",
+              "title": "Allowed IP ranges",
+              "description": "Comma-separated CIDR list",
+              "default": "0.0.0.0/0",
+              "x-onyxia": {
+                "overwriteDefaultWith": "{{user.ip}}"
+              },
+              "hidden": {
+                "value": false,
+                "path": "enabled",
+                "isPathRelative": true
+              }
+            }
+          }
+        },
+        "networkPolicy": {
+          "type": "object",
+          "title": "Network policy",
+          "description": "Define access policy to the service",
+          "x-onyxia": {
+            "overwriteSchemaWith": "network-policy.json"
+          },
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "title": "Enable network policy",
+              "description": "Only pods from the same namespace and the ingress controller will be allowed",
+              "default": false,
+              "x-onyxia": {
+                "overwriteDefaultWith": "region.defaultNetworkPolicy"
+              }
+            },
+            "from": {
+              "type": "array",
+              "description": "Array of sources allowed to reach the service",
+              "items": {
+                "type": "object",
+                "additionalProperties": true
+              },
+              "default": [],
+              "x-onyxia": {
+                "hidden": true,
+                "overwriteDefaultWith": "region.from"
+              }
+            }
+          }
         }
       }
     },
-    "provisioning": {
+    "mcp": {
       "type": "object",
-      "title": "Auto-provisioning",
-      "description": "Job post-install qui crée l'owner et une clé API automatiquement.",
+      "title": "MCP server",
+      "description": "Build and run workflows from an AI assistant (Claude, Cursor...) through the Model Context Protocol",
       "properties": {
         "enabled": {
           "type": "boolean",
-          "title": "Activer",
-          "description": "Désactiver si l'instance existe déjà avec un owner créé hors chart (sinon le Job échoue gracieusement et la clé doit être renseignée à la main).",
+          "title": "Enable the MCP server",
+          "description": "Runs czlonkowski/n8n-mcp next to n8n, with its own URL and bearer token shown in the service notes.",
           "default": true
         },
-        "apiKeyLabel": {
+        "hostname": {
           "type": "string",
-          "title": "Label de la clé API n8n",
-          "default": "auto-provisioned"
+          "title": "MCP hostname",
+          "default": "",
+          "x-onyxia": {
+            "hidden": true,
+            "overwriteDefaultWith": "{{project.id}}-n8n-mcp-{{k8s.randomSubdomain}}.{{k8s.domain}}"
+          }
+        },
+        "securityMode": {
+          "type": "string",
+          "title": "SSRF protection",
+          "description": "moderate: n8n on localhost allowed, private cluster IPs blocked. permissive: everything allowed.",
+          "default": "moderate",
+          "enum": ["strict", "moderate", "permissive"],
+          "hidden": {
+            "value": false,
+            "path": "enabled",
+            "isPathRelative": true
+          }
+        }
+      }
+    },
+    "n8n": {
+      "type": "object",
+      "title": "n8n",
+      "description": "Instance settings",
+      "properties": {
+        "timezone": {
+          "type": "string",
+          "title": "Timezone",
+          "description": "Used by Schedule and Cron nodes.",
+          "default": "Europe/Paris",
+          "enum": ["Europe/Paris", "UTC", "Europe/London", "America/New_York", "Asia/Tokyo"]
+        },
+        "logLevel": {
+          "type": "string",
+          "title": "Log level",
+          "default": "info",
+          "enum": ["error", "warn", "info", "debug"]
+        },
+        "templates": {
+          "type": "boolean",
+          "title": "Workflow templates",
+          "description": "Browse the public template gallery from n8n.io.",
+          "default": true
+        },
+        "unverifiedCommunityPackages": {
+          "type": "boolean",
+          "title": "Unverified community packages",
+          "description": "Allows installing community nodes not verified by n8n: third-party code running in your pod.",
+          "default": false
         }
       }
     },
     "database": {
       "type": "object",
-      "title": "Base de données",
-      "description": "Stockage des workflows, executions, credentials",
+      "title": "Database",
+      "description": "Where workflows, executions and credentials are stored",
       "properties": {
         "type": {
           "type": "string",
-          "title": "Moteur",
-          "description": "SQLite : simple, mono-pod, suffit pour usage personnel/équipe. PostgreSQL : robuste, multi-réplique possible.",
+          "title": "Engine",
+          "description": "sqlite: on the persistent volume, fine for personal or team use. postgresdb: external PostgreSQL.",
           "default": "sqlite",
           "enum": ["sqlite", "postgresdb"]
         },
         "postgres": {
           "type": "object",
-          "title": "PostgreSQL externe",
-          "description": "Renseigner uniquement si type = postgresdb",
+          "title": "External PostgreSQL",
+          "hidden": {
+            "value": "sqlite",
+            "path": "type",
+            "isPathRelative": true
+          },
           "properties": {
             "host": {
               "type": "string",
@@ -135,23 +226,23 @@
             },
             "database": {
               "type": "string",
-              "title": "Nom de la base",
+              "title": "Database",
               "default": "n8n"
             },
             "user": {
               "type": "string",
-              "title": "Utilisateur",
+              "title": "User",
               "default": "n8n"
             },
             "password": {
               "type": "string",
-              "title": "Mot de passe",
-              "description": "Stocké dans un Secret Kubernetes.",
-              "default": ""
+              "title": "Password",
+              "default": "",
+              "render": "password"
             },
             "schema": {
               "type": "string",
-              "title": "Schéma",
+              "title": "Schema",
               "default": "public"
             },
             "ssl": {
@@ -163,56 +254,229 @@
         }
       }
     },
+    "discovery": {
+      "type": "object",
+      "title": "Discovery",
+      "description": "Connect to other Onyxia services of your project",
+      "properties": {
+        "postgresql": {
+          "type": "boolean",
+          "title": "Use my Onyxia PostgreSQL",
+          "description": "When the engine is sqlite and a PostgreSQL service runs in the project, store n8n data in it instead.",
+          "default": false
+        }
+      }
+    },
     "persistence": {
       "type": "object",
-      "title": "Stockage persistant",
-      "description": "PVC monté sur /home/node/.n8n (workflows, credentials, SQLite, uploads)",
+      "title": "Persistence",
+      "description": "Volume mounted on /home/node/.n8n",
+      "x-onyxia": {
+        "overwriteSchemaWith": "ide/persistence.json"
+      },
       "properties": {
+        "enabled": {
+          "type": "boolean",
+          "title": "Create a persistent volume",
+          "description": "Without it, workflows and credentials are lost when the pod restarts.",
+          "default": true
+        },
         "size": {
           "type": "string",
-          "title": "Taille du volume",
-          "description": "Survit aux redémarrages du pod.",
+          "title": "Persistent volume size",
           "default": "5Gi",
-          "enum": ["1Gi", "5Gi", "10Gi", "20Gi", "50Gi"]
+          "render": "slider",
+          "sliderMin": 1,
+          "sliderMax": 100,
+          "sliderStep": 1,
+          "sliderUnit": "Gi",
+          "x-onyxia": {
+            "overwriteDefaultWith": "{{region.resources.disk}}"
+          },
+          "hidden": {
+            "value": false,
+            "path": "enabled",
+            "isPathRelative": true
+          }
         }
       }
     },
     "resources": {
       "type": "object",
-      "title": "Ressources allouées",
+      "title": "Resources",
+      "description": "Resources of the n8n container. The MCP server and the provisioning helper have their own small budget.",
+      "x-onyxia": {
+        "overwriteSchemaWith": "ide/resources.json"
+      },
       "properties": {
         "requests": {
           "type": "object",
-          "title": "Requêtes (réservation)",
+          "title": "Guaranteed resources",
           "properties": {
             "cpu": {
               "type": "string",
               "title": "CPU",
               "default": "200m",
-              "description": "200m = 0,2 cœur"
+              "render": "slider",
+              "sliderMin": 50,
+              "sliderMax": 8000,
+              "sliderStep": 50,
+              "sliderUnit": "m",
+              "sliderExtremity": "down",
+              "sliderExtremitySemantic": "guaranteed",
+              "sliderRangeId": "cpu"
             },
             "memory": {
               "type": "string",
-              "title": "RAM",
-              "default": "512Mi"
+              "title": "Memory",
+              "default": "512Mi",
+              "render": "slider",
+              "sliderMin": 256,
+              "sliderMax": 16384,
+              "sliderStep": 256,
+              "sliderUnit": "Mi",
+              "sliderExtremity": "down",
+              "sliderExtremitySemantic": "guaranteed",
+              "sliderRangeId": "memory"
             }
           }
         },
         "limits": {
           "type": "object",
-          "title": "Limites (plafond)",
+          "title": "Maximum resources",
           "properties": {
             "cpu": {
               "type": "string",
-              "title": "CPU max",
+              "title": "CPU",
               "default": "2000m",
-              "description": "2000m = 2 cœurs"
+              "render": "slider",
+              "sliderMin": 50,
+              "sliderMax": 8000,
+              "sliderStep": 50,
+              "sliderUnit": "m",
+              "sliderExtremity": "up",
+              "sliderExtremitySemantic": "Maximum",
+              "sliderRangeId": "cpu"
             },
             "memory": {
               "type": "string",
-              "title": "RAM max",
-              "default": "2Gi"
+              "title": "Memory",
+              "default": "2Gi",
+              "render": "slider",
+              "sliderMin": 256,
+              "sliderMax": 16384,
+              "sliderStep": 256,
+              "sliderUnit": "Mi",
+              "sliderExtremity": "up",
+              "sliderExtremitySemantic": "Maximum",
+              "sliderRangeId": "memory"
             }
+          }
+        }
+      }
+    },
+    "ingress": {
+      "type": "object",
+      "title": "Ingress",
+      "x-onyxia": {
+        "hidden": true
+      },
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "x-onyxia": {
+            "hidden": true,
+            "overwriteDefaultWith": "k8s.ingress"
+          }
+        },
+        "hostname": {
+          "type": "string",
+          "default": "",
+          "x-onyxia": {
+            "hidden": true,
+            "overwriteDefaultWith": "{{project.id}}-n8n-{{k8s.randomSubdomain}}.{{k8s.domain}}"
+          }
+        },
+        "ingressClassName": {
+          "type": "string",
+          "default": "",
+          "x-onyxia": {
+            "hidden": true,
+            "overwriteDefaultWith": "{{k8s.ingressClassName}}"
+          }
+        },
+        "useCertManager": {
+          "type": "boolean",
+          "default": false,
+          "x-onyxia": {
+            "hidden": true,
+            "overwriteDefaultWith": "k8s.useCertManager"
+          }
+        },
+        "certManagerClusterIssuer": {
+          "type": "string",
+          "default": "",
+          "x-onyxia": {
+            "hidden": true,
+            "overwriteDefaultWith": "k8s.certManagerClusterIssuer"
+          }
+        }
+      }
+    },
+    "route": {
+      "type": "object",
+      "title": "Route",
+      "x-onyxia": {
+        "hidden": true
+      },
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "x-onyxia": {
+            "hidden": true,
+            "overwriteDefaultWith": "k8s.route"
+          }
+        },
+        "hostname": {
+          "type": "string",
+          "default": "",
+          "x-onyxia": {
+            "hidden": true,
+            "overwriteDefaultWith": "{{project.id}}-n8n-{{k8s.randomSubdomain}}.{{k8s.domain}}"
+          }
+        }
+      }
+    },
+    "userPreferences": {
+      "type": "object",
+      "x-onyxia": {
+        "hidden": true
+      },
+      "properties": {
+        "language": {
+          "type": "string",
+          "description": "Notes are written in French for 'fr', in English otherwise.",
+          "default": "fr",
+          "x-onyxia": {
+            "hidden": true,
+            "overwriteDefaultWith": "{{user.lang}}"
+          }
+        }
+      }
+    },
+    "global": {
+      "type": "object",
+      "x-onyxia": {
+        "hidden": true
+      },
+      "properties": {
+        "suspend": {
+          "type": "boolean",
+          "default": false,
+          "x-onyxia": {
+            "hidden": true
           }
         }
       }

@@ -1,0 +1,9 @@
+{{/*
+  Le numéro dans le nom de fichier fixe l'ordre des Ingress dans le manifeste :
+  quand les notes ne citent aucune URL, Onyxia prend la première trouvée pour
+  le bouton « Ouvrir ». L'éditeur n8n doit passer avant le serveur MCP.
+*/}}
+{{- if .Values.ingress.enabled }}
+{{- $_ := required "ingress.hostname est obligatoire : un Ingress sans hôte capterait tout hostname non attribué du contrôleur partagé." .Values.ingress.hostname }}
+{{- end }}
+{{ include "library-chart.ingress" . }}

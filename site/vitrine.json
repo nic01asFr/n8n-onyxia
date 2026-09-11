@@ -1,0 +1,110 @@
+{
+  "nom": "n8n pour Onyxia",
+  "pitch": "Ton instance n8n sur SSPCloud, prête en deux minutes : éditeur de workflows, webhooks publics, et un serveur MCP pour que ton assistant IA construise les workflows avec toi.",
+  "couleur": "#EA4B71",
+  "depot": "https://github.com/nic01asFr/n8n-onyxia",
+  "tags": ["n8n", "MCP", "Onyxia", "SSPCloud", "Helm"],
+  "produit": {
+    "accroche": "n8n relie des API, des bases et des fichiers par des workflows visuels. Ce chart le lance dans ton espace SSPCloud comme n'importe quel service Onyxia : URL publique, mot de passe affiché dans « Mes services », données sur un volume persistant. Le serveur MCP livré avec lui donne à Claude, Cursor ou tout client MCP de quoi lire, créer et déboguer tes workflows.",
+    "sequence": [
+      {
+        "titre": "Tu lances le service",
+        "texte": "Depuis le catalogue Onyxia, ou en une commande depuis un terminal Jupyter. Onyxia renseigne l'adresse, ton email et un mot de passe à usage unique."
+      },
+      {
+        "titre": "Le pod se prépare seul",
+        "texte": "Un conteneur annexe crée ton compte owner avant que quiconque n'atteigne l'URL, puis une clé API aux droits limités pour le serveur MCP. Aucun droit Kubernetes n'est demandé."
+      },
+      {
+        "titre": "Tu ouvres l'éditeur",
+        "texte": "Le bouton « Ouvrir » d'Onyxia mène à n8n ; identifiant et mot de passe sont dans les notes du service, avec le bouton de copie."
+      },
+      {
+        "titre": "Tu branches ton assistant",
+        "texte": "Les notes donnent l'adresse MCP, le jeton et la commande « claude mcp add » prête à coller. Tu décris un workflow, l'assistant le construit dans ton instance."
+      }
+    ],
+    "contextes": [
+      {
+        "titre": "Automatiser une chaîne de traitement",
+        "texte": "Récupérer un fichier chaque nuit, le déposer sur ton S3 SSPCloud, prévenir l'équipe.",
+        "pourquoi": "Le planificateur de n8n tourne dans ton espace, près de tes données."
+      },
+      {
+        "titre": "Recevoir des webhooks",
+        "texte": "GitHub, un formulaire, un outil métier : n8n expose une URL publique en HTTPS pour chacun.",
+        "pourquoi": "Le certificat du domaine SSPCloud couvre l'hôte du service, sans rien configurer."
+      },
+      {
+        "titre": "Prototyper avec un assistant",
+        "texte": "Tu décris le besoin en langage naturel ; l'assistant cherche les bons nœuds, écrit le workflow et lit les exécutions en échec.",
+        "pourquoi": "Le serveur MCP connaît le catalogue complet des nœuds n8n."
+      }
+    ]
+  },
+  "points": [
+    {
+      "titre": "Un service Onyxia comme les autres",
+      "texte": "Formulaire, bouton « Ouvrir », mot de passe à copier, mise en veille : le chart suit les conventions des catalogues officiels InseeFrLab."
+    },
+    {
+      "titre": "Rien d'ouvert par défaut",
+      "texte": "Le compte owner existe dès le démarrage, le serveur MCP exige un jeton Bearer, et la clé API qu'il utilise ne touche ni aux utilisateurs ni aux réglages de sécurité."
+    },
+    {
+      "titre": "Tes données restent chez toi",
+      "texte": "Workflows, credentials chiffrées et base SQLite vivent sur un volume de ton namespace. PostgreSQL Onyxia en option."
+    }
+  ],
+  "titreFonctionnalites": "Ce que tu peux faire",
+  "fonctionnalites": [
+    {
+      "titre": "Plus de 400 intégrations",
+      "texte": "API REST, bases de données, S3, messageries, LLM : chaque nœud se configure dans l'éditeur, les credentials sont chiffrées.",
+      "pourQui": "Pour qui : toute personne qui enchaîne des outils à la main."
+    },
+    {
+      "titre": "Workflows pilotés par un assistant",
+      "texte": "Rechercher un nœud, valider un workflow, le créer, le mettre à jour, lire ses exécutions : le serveur n8n-mcp expose ces outils au protocole MCP.",
+      "pourQui": "Pour qui : les utilisateurs de Claude Code, Claude Desktop ou Cursor."
+    },
+    {
+      "titre": "PostgreSQL Onyxia découvert automatiquement",
+      "texte": "Coche une case : si ton projet héberge un service PostgreSQL, n8n y range ses données au lieu de SQLite.",
+      "pourQui": "Pour qui : les équipes qui partagent une instance."
+    },
+    {
+      "titre": "Accès restreint en option",
+      "texte": "Liste d'IP autorisées et politique réseau, reprises des réglages de ta région Onyxia.",
+      "pourQui": "Pour qui : les instances qui traitent des données sensibles."
+    }
+  ],
+  "encart": {
+    "titre": "Pourquoi un chart dédié",
+    "texte": "Lancer l'image n8n ne suffit pas sur SSPCloud : l'écran de création du compte admin reste ouvert au premier visiteur, et un mot de passe rangé dans un Secret Kubernetes est introuvable depuis l'interface. Ce chart règle les deux sans droit supplémentaire.",
+    "lien": {
+      "libelle": "Lire le chart",
+      "url": "https://github.com/nic01asFr/n8n-onyxia/tree/main/charts/n8n"
+    }
+  },
+  "stack": {
+    "titre": "Stack ouverte",
+    "texte": "Tout est public et versionné : le chart, le script d'installation, le code du provisioning.",
+    "items": [
+      "n8n (Sustainable Use License)",
+      "czlonkowski/n8n-mcp (MIT)",
+      "library-chart InseeFrLab",
+      "Helm, Kubernetes, Onyxia"
+    ]
+  },
+  "journal": [
+    {
+      "version": "chart 1.0.0",
+      "texte": "n8n 2.x, serveur MCP intégré au même service, provisioning dans le pod sans droit Kubernetes, formulaire et notes aux conventions Onyxia, PostgreSQL découvert automatiquement."
+    },
+    {
+      "version": "chart 0.2.0",
+      "texte": "Deux charts séparés (n8n et n8n-mcp) et un script d'installation qui créait la clé API depuis le terminal Jupyter."
+    }
+  ]
+}

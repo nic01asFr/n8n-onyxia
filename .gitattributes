@@ -1,0 +1,8 @@
+# install.sh est servi tel quel à « curl | bash » : un retour chariot le casse.
+*.sh    text eol=lf
+*.mjs   text eol=lf
+*.yaml  text eol=lf
+*.yml   text eol=lf
+*.tpl   text eol=lf
+*.txt   text eol=lf
+*.json  text eol=lf

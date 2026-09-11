@@ -1,230 +1,90 @@
 # n8n-onyxia
 
-> **n8n + serveur MCP, déployés en une commande sur SSPCloud Onyxia.**
->
-> Une instance d'automatisation no-code complète, accessible publiquement par webhooks, branchable à Claude Code / Claude Desktop pour piloter tes workflows depuis un LLM. Tout en 2 minutes, zéro config.
+**Présentation produit :** [nic01asfr.github.io/n8n-onyxia](https://nic01asfr.github.io/n8n-onyxia/) — ce README reste la doc technique.
 
----
+Chart Helm qui lance [n8n](https://n8n.io) comme un service Onyxia (SSPCloud), avec un serveur [MCP](https://github.com/czlonkowski/n8n-mcp) intégré pour piloter les workflows depuis Claude, Cursor ou tout client MCP.
 
-## Installation en une commande
+| | |
+|---|---|
+| n8n | 2.38.6 |
+| n8n-mcp | 2.84.0 |
+| Chart | 1.0.0, dépend de la `library-chart` InseeFrLab 2.1.7 |
+| Dépôt Helm | `https://nic01asfr.github.io/n8n-onyxia` |
 
-Depuis n'importe quel **terminal de pod Jupyter SSPCloud** (qui a déjà `kubectl` + `helm` préconfigurés) :
+## Installer
+
+### Depuis un terminal Jupyter SSPCloud
+
+Lancer le service Jupyter avec le **rôle Kubernetes Edit** (le rôle View ne peut ni installer ni lire les Secrets), puis :
 
 ```bash
 curl -sL https://nic01asfr.github.io/n8n-onyxia/install.sh | bash
 ```
 
-**Prérequis pod Jupyter** :
-- Lancer le service avec le rôle Kubernetes **Edit** (pas View) — sinon `helm install` et la lecture des Secrets échouent.
-- Le script redirige automatiquement la config Helm vers `/tmp/helm/` (sur certains pods, `/home/onyxia/` est en lecture seule).
+Le script calcule les hôtes (`<namespace>-n8n.user.lab.sspcloud.fr` et `<namespace>-n8n-mcp.user.lab.sspcloud.fr`), génère le mot de passe owner, installe le chart et enregistre le service dans « Mes services ». Variables utiles : `OWNER_EMAIL`, `RELEASE`, `CHART_VERSION`, `SKIP_MCP=true`.
 
-Le script fait tout :
+### Depuis le catalogue Onyxia
 
-1. Détecte ton namespace et ton email automatiquement
-2. Déploie **n8n** (UI workflow + base SQLite + ingress TLS)
-3. Crée le compte owner + génère une clé API
-4. Déploie **n8n-mcp** (serveur MCP avec auth Bearer)
-5. Affiche un récap copy-paste avec URLs et tokens
+Un catalogue se déclare côté administrateurs de la plateforme (`onyxia.api.catalogs`), pas depuis le compte utilisateur. Une fois `https://nic01asfr.github.io/n8n-onyxia` référencé, le formulaire renseigne l'hôte, l'email (`{{user.email}}`), le mot de passe (`{{service.oneTimePassword}}`), la classe d'ingress et les réglages réseau de la région.
 
-**Résultat après 2 min** : tu as ces deux URLs accessibles depuis Internet :
+### Avec Helm
 
-| Service | URL |
+```bash
+helm repo add n8n-onyxia https://nic01asfr.github.io/n8n-onyxia
+helm install n8n n8n-onyxia/n8n \
+  --set ingress.hostname=user-IDEP-n8n.user.lab.sspcloud.fr \
+  --set mcp.hostname=user-IDEP-n8n-mcp.user.lab.sspcloud.fr \
+  --set ingress.ingressClassName=onyxia \
+  --set security.email=toi@exemple.fr \
+  --set security.password=N8n-motdepasse
+```
+
+## Ce que fait le chart
+
+Un seul pod, trois conteneurs :
+
+| Conteneur | Rôle |
 |---|---|
-| UI n8n | `https://user-<idep>-n8n.user.lab.sspcloud.fr` |
-| MCP n8n | `https://user-<idep>-n8n-mcp.user.lab.sspcloud.fr/mcp` |
+| `n8n` | L'éditeur et le moteur, données sur le volume monté en `/home/node/.n8n`. |
+| `provisioning` | Crée le compte owner dès le démarrage, puis une clé API pour le MCP, par `localhost`. Aucun droit Kubernetes. Script : [charts/n8n/files/provision.mjs](charts/n8n/files/provision.mjs). |
+| `mcp` | n8n-mcp, qui joint n8n sur `localhost` avec la clé déposée sur le volume et exige un jeton Bearer. |
 
-…plus le mot de passe owner et les tokens, prêts à coller dans Claude.
+Les notes du service (fenêtre « Ouvrir » d'Onyxia) affichent l'URL, l'identifiant, le mot de passe, l'adresse MCP, le jeton et la commande `claude mcp add` prête à coller.
 
----
-
-## À quoi ça sert ?
-
-**n8n** est un outil d'automatisation no-code (équivalent open source de Zapier / Make). Tu connectes des nœuds visuellement pour orchestrer des APIs, traiter des webhooks, planifier des tâches.
-
-- Reçois des webhooks depuis GitHub, Stripe, Telegram, etc.
-- Appelle n'importe quelle API : Gmail, Slack, Notion, OpenAI…
-- Planifie des cron jobs
-- Branche sur ta base de données, ton S3, ton stockage
-
-**n8n-mcp** branche ton n8n à un LLM (Claude, GPT…) via le protocole MCP. Le LLM peut alors :
-
-- Lister et lire tes workflows
-- Créer / éditer / déboguer des workflows en langage naturel
-- Déclencher des exécutions et lire les logs
-- Connaître le catalogue complet des nœuds n8n
-
-→ Tu décris ce que tu veux à Claude, il construit le workflow pour toi.
-
----
+Détail des valeurs : [charts/n8n/README.md](charts/n8n/README.md).
 
 ## Brancher Claude Code
 
-Une fois `install.sh` terminé, le récap te donne la commande exacte. En résumé :
-
 ```bash
-claude mcp add n8n --transport http \
-  https://user-<idep>-n8n-mcp.user.lab.sspcloud.fr/mcp \
-  --header "Authorization: Bearer <TON_TOKEN>"
+claude mcp add n8n --transport http https://user-IDEP-n8n-mcp.user.lab.sspcloud.fr/mcp \
+  --header "Authorization: Bearer <jeton affiché dans les notes>"
 ```
 
-Puis dans Claude Code : `/mcp` pour vérifier. Prompt-test :
-> Liste les nœuds n8n disponibles pour parler à GitHub
+## Migrer depuis les charts 0.x
 
-Le LLM appelle `search_nodes` du MCP → te répond avec la liste précise.
+Les charts 0.x (n8n 1.x, chart `n8n-mcp` séparé) rangeaient les données dans `.n8n/.n8n` du volume et la clé sous `encryptionKey`. `install.sh` refuse de les mettre à jour. La procédure, éprouvée sur un cluster de test avec un credential créé en 0.2.0 puis relu en clair après migration, est décrite sur la [vitrine](https://nic01asfr.github.io/n8n-onyxia/#migration). Sauvegarder le volume et la clé avant.
 
-## Brancher Claude Desktop
+## Limites
 
-Si ta version de Claude Desktop supporte les **Custom Connectors** (Settings → Connectors → Add custom), entre les paramètres affichés. Sinon, ajoute dans `%APPDATA%\Claude\claude_desktop_config.json` :
-
-```json
-{
-  "mcpServers": {
-    "n8n": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote",
-        "https://user-<idep>-n8n-mcp.user.lab.sspcloud.fr/mcp",
-        "--header", "Authorization: Bearer <TON_TOKEN>"]
-    }
-  }
-}
-```
-*(Node.js requis pour `mcp-remote`. Restart complet de Claude Desktop ensuite.)*
-
----
-
-## Méthodes alternatives d'installation
-
-### A. Catalogue Onyxia (zéro CLI)
-
-Dans SSPCloud → **Mon compte** → **Services** → *Sources des services personnalisés* → ajoute :
-
-```
-https://nic01asfr.github.io/n8n-onyxia
-```
-
-Les charts `n8n` et `n8n-mcp` apparaissent ensuite dans ton catalogue, lançables avec un formulaire pré-rempli (Onyxia injecte ton idep, email, etc.).
-
-### B. Helm direct (utilisateur avancé)
-
-Si `helm repo add` échoue sur une erreur d'écriture dans `/home/onyxia/` :
-
-```bash
-export HELM_CONFIG_HOME=/tmp/helm/config
-export HELM_CACHE_HOME=/tmp/helm/cache
-export HELM_DATA_HOME=/tmp/helm/data
-mkdir -p "$HELM_CONFIG_HOME" "$HELM_CACHE_HOME" "$HELM_DATA_HOME"
-```
-
-Puis :
-
-```bash
-helm repo add nic01asfr https://nic01asfr.github.io/n8n-onyxia
-helm repo update
-helm install n8n nic01asfr/n8n \
-  -f https://nic01asfr.github.io/n8n-onyxia/values-sspcloud.yaml \
-  --set owner.email=mon@email.fr \
-  --set n8n.host=user-MONIDEP-n8n.user.lab.sspcloud.fr
-helm install n8n-mcp nic01asfr/n8n-mcp \
-  -f https://nic01asfr.github.io/n8n-onyxia/values-sspcloud-mcp.yaml \
-  --set mcp.host=user-MONIDEP-n8n-mcp.user.lab.sspcloud.fr \
-  --set n8n.apiUrl=http://n8n.user-MONIDEP.svc.cluster.local:5678
-```
-
-À noter : avec cette méthode, la création automatique de la clé API n8n n'est pas faite — il faut soit la créer via l'UI puis patcher le Secret, soit laisser tomber `install.sh` du repo qui le fait pour toi.
-
----
-
-## Structure du repo
-
-```
-n8n-onyxia/
-├── charts/
-│   ├── n8n/              # Chart Helm n8n (UI + persistence + ingress TLS)
-│   └── n8n-mcp/          # Chart Helm serveur MCP
-├── scripts/
-│   └── install.sh        # Orchestrateur one-liner
-└── .github/workflows/
-    └── release.yml       # CI : package + publie sur GitHub Pages
-```
-
-Détails par chart :
-- [charts/n8n/README.md](charts/n8n/README.md)
-- [charts/n8n-mcp/README.md](charts/n8n-mcp/README.md)
-
----
-
-## Sauvegardes critiques
-
-Le script génère 3 secrets qu'**il faut sauvegarder hors-cluster** (gestionnaire de mots de passe / Vault) :
-
-| Secret | Pourquoi |
+| Sujet | Limite |
 |---|---|
-| `ownerPassword` | Pour te logger dans l'UI n8n |
-| `encryptionKey` | Chiffre tes credentials stockées dans n8n (Gmail, Slack, etc.). **Perdue → tous les credentials irrécupérables.** |
-| `AUTH_TOKEN` MCP | Pour que Claude puisse parler au MCP |
+| Réplicas | Un seul pod (SQLite sur volume ReadWriteOnce). PostgreSQL possible via `database.type` ou `discovery.postgresql`, sans mode queue. |
+| Authentification | Compte n8n (email et mot de passe). Keycloak SSPCloud refuse les redirections vers les hôtes de services : pas d'OIDC. |
+| Notes | Conservées par Helm dans le Secret de la release : qui lit les Secrets du namespace lit le mot de passe affiché. |
+| Réseau sortant | Pas d'IP fixe, port 25 fermé (utiliser 587 ou 465). |
+| Volume | Dans Onyxia, supprimer le service supprime le volume : exporter les workflows avant. |
 
-Pour les ré-extraire à tout moment :
-```bash
-NS=user-$(whoami | cut -d- -f2)  # ou ton idep direct
-kubectl -n $NS get secret n8n -o jsonpath='{.data.ownerPassword}' | base64 -d
-kubectl -n $NS get secret n8n -o jsonpath='{.data.encryptionKey}' | base64 -d
-kubectl -n $NS get secret n8n-mcp -o jsonpath='{.data.AUTH_TOKEN}' | base64 -d
-```
-
----
-
-## Limites connues
-
-| Catégorie | Limite | Atténuation |
-|---|---|---|
-| **Pod Jupyter** | Rôle K8s « View » insuffisant pour `helm install` / Secrets. | Relancer le pod avec **Edit**. |
-| **Helm config** | `/home/onyxia/` parfois en lecture seule. | `install.sh` redirige vers `/tmp/helm/` ; voir méthode B ci-dessus. |
-| **Scaling** | Mono-pod (SQLite + PVC RWO). Pas de multi-réplique. | Passer en PostgreSQL + mode queue (non fourni pour l'instant). |
-| **Workflows en cours** | Redémarrage du pod = exécution interrompue. | Workflows critiques : monitor externe + retry. |
-| **OAuth** | Callback URL fixe → changer le hostname casse les credentials OAuth. | Ne pas changer le hostname une fois en prod. |
-| **Backup** | Pas de backup auto (workflows + SQLite). | CronJob de backup vers S3 SSPCloud à ajouter. |
-| **N8N_ENCRYPTION_KEY** | Si perdue, credentials irrécupérables. | Sauvegarde obligatoire. |
-| **IP sortante** | Pas d'IP fixe (NAT partagé). | Services exigeant IP allowlist : proxy intermédiaire. |
-| **Port 25 SMTP** | Bloqué (standard cloud). | Utiliser 587/465. |
-| **Claude Desktop** | Pas de HTTP MCP natif avant version récente. | Bridge `mcp-remote` requis (Node.js). |
-
-Détail technique complet : voir les README individuels des charts.
-
----
-
-## Désinstallation
+## Développer
 
 ```bash
-helm uninstall n8n-mcp -n user-<idep>
-helm uninstall n8n     -n user-<idep>
-
-# Les Secrets + PVC sont conservés (resource-policy: keep).
-# Pour TOUT supprimer y compris données :
-kubectl delete pvc n8n -n user-<idep>
-kubectl delete secret n8n n8n-mcp -n user-<idep>
+helm dependency update charts/n8n
+helm lint charts/n8n --set ingress.hostname=a.example.org --set mcp.hostname=b.example.org
+node --test site/generate.test.mjs
+node site/generate.mjs   # vitrine dans site/dist
 ```
 
----
+Un push sur `main` qui touche `charts/`, `scripts/` ou `site/` lance les tests, puis publie le chart, `install.sh` et la vitrine sur la branche `gh-pages`. Monter `version` dans `charts/n8n/Chart.yaml` à chaque changement du chart.
 
-## Contribuer
+## Licences
 
-Mono-repo Helm. À chaque push sur `main` qui touche `charts/` ou `scripts/`, un workflow GitHub Actions repackage tout et publie sur la branche `gh-pages`.
-
-Pour tester localement :
-```bash
-git clone https://github.com/nic01asFr/n8n-onyxia.git
-cd n8n-onyxia
-helm lint charts/n8n charts/n8n-mcp
-helm template test charts/n8n --set owner.email=test@test.com --set n8n.host=test.local
-bash -n scripts/install.sh   # vérifier la syntaxe
-```
-
-Pour bumper une version, modifier `version:` dans `charts/<chart>/Chart.yaml` puis push.
-
----
-
-## Licence
-
-- **Charts (ce repo)** : MIT
-- **n8n** : [Sustainable Use License](https://docs.n8n.io/sustainable-use-license/) (usage interne OK, redistribution commerciale = lire la licence)
-- **n8n-mcp** : MIT ([czlonkowski/n8n-mcp](https://github.com/czlonkowski/n8n-mcp))
+Chart et scripts : MIT. n8n : [Sustainable Use License](https://docs.n8n.io/sustainable-use-license/). n8n-mcp : MIT. Projet indépendant, non affilié à n8n GmbH.

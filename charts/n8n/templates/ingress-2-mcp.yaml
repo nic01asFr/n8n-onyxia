@@ -1,0 +1,34 @@
+{{- if and .Values.mcp.enabled .Values.ingress.enabled (not .Values.global.suspend) }}
+{{- $fullName := include "library-chart.fullname" . -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullName }}-mcp
+  labels:
+    {{- include "library-chart.labels" . | nindent 4 }}
+  annotations:
+    {{- include "library-chart.ingress.annotations" . | nindent 4 }}
+spec:
+  {{- with .Values.ingress.ingressClassName }}
+  ingressClassName: {{ . | quote }}
+  {{- end }}
+  {{- if .Values.ingress.tls }}
+  tls:
+    - hosts:
+        - {{ .Values.mcp.hostname | quote }}
+      {{- if .Values.ingress.useCertManager }}
+      secretName: tls-cert-{{ $fullName }}-mcp
+      {{- end }}
+  {{- end }}
+  rules:
+    - host: {{ required "mcp.hostname est obligatoire quand mcp.enabled et ingress.enabled." .Values.mcp.hostname | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullName }}
+                port:
+                  number: {{ .Values.networking.mcp.port }}
+{{- end }}

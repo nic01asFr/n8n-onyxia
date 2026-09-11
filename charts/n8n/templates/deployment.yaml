@@ -1,82 +1,110 @@
+{{- $fullName := include "library-chart.fullname" . -}}
+{{- $secretName := include "n8n.secretName" . -}}
+{{- $postgresMode := include "n8n.postgresMode" . -}}
+{{- $apiKeyRelPath := include "n8n.apiKeyRelPath" . -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "n8n.fullname" . }}
+  name: {{ $fullName }}
   labels:
-    {{- include "n8n.labels" . | nindent 4 }}
+    {{- include "library-chart.labels" . | nindent 4 }}
 spec:
-  replicas: 1
-  # PVC RWO + SQLite => recréation stricte, pas de rolling.
+  # Mise en veille Onyxia : zéro réplique, le volume est conservé.
+  replicas: {{ ternary 0 1 .Values.global.suspend }}
+  # SQLite sur un volume ReadWriteOnce : un seul pod à la fois.
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      {{- include "n8n.selectorLabels" . | nindent 6 }}
+      {{- include "library-chart.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "n8n.selectorLabels" . | nindent 8 }}
+        {{- include "library-chart.selectorLabels" . | nindent 8 }}
       annotations:
-        # Force le rolling si la clé / les paramètres changent.
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        checksum/provision: {{ include (print $.Template.BasePath "/configmap-provision.yaml") . | sha256sum }}
     spec:
+      # Aucun conteneur ne parle à l'API Kubernetes.
+      automountServiceAccountToken: false
       securityContext:
-        {{- toYaml .Values.securityContext | nindent 8 }}
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: n8n
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: "{{ .Values.service.image.repository }}:{{ .Values.service.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.service.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
           ports:
             - name: http
-              containerPort: {{ .Values.n8n.port }}
+              containerPort: 5678
               protocol: TCP
           env:
-            # ─── Réseau et URLs ────────────────────────────────────────────
+            # --- Adresses ------------------------------------------------------
             - name: N8N_HOST
-              value: {{ .Values.n8n.host | quote }}
+              value: {{ include "n8n.hostname" . | quote }}
             - name: N8N_PORT
-              value: {{ .Values.n8n.port | quote }}
-            - name: N8N_PROTOCOL
-              value: {{ .Values.n8n.protocol | quote }}
+              value: "5678"
             - name: N8N_LISTEN_ADDRESS
               value: "0.0.0.0"
-            - name: WEBHOOK_URL
-              value: "{{ .Values.n8n.protocol }}://{{ .Values.n8n.host }}/"
+            - name: N8N_PROTOCOL
+              value: {{ ternary "https" "http" (or .Values.route.enabled .Values.ingress.tls) | quote }}
             - name: N8N_EDITOR_BASE_URL
-              value: "{{ .Values.n8n.protocol }}://{{ .Values.n8n.host }}/"
-            # ─── Locale et logs ────────────────────────────────────────────
+              value: {{ include "n8n.baseUrl" . | quote }}
+            # Remplace WEBHOOK_URL, dépréciée depuis n8n 2.35.
+            - name: N8N_WEBHOOK_URL
+              value: {{ include "n8n.baseUrl" . | quote }}
+            # Un seul saut : le contrôleur d'ingress.
+            - name: N8N_PROXY_HOPS
+              value: "1"
+            - name: N8N_SECURE_COOKIE
+              value: {{ ternary "true" "false" (or .Values.route.enabled .Values.ingress.tls) | quote }}
+            # --- Langue, heure, journaux ---------------------------------------
             - name: GENERIC_TIMEZONE
               value: {{ .Values.n8n.timezone | quote }}
             - name: TZ
               value: {{ .Values.n8n.timezone | quote }}
+            - name: N8N_DEFAULT_LOCALE
+              value: {{ .Values.userPreferences.language | default "en" | quote }}
             - name: N8N_LOG_LEVEL
               value: {{ .Values.n8n.logLevel | quote }}
-            # ─── Confidentialité ───────────────────────────────────────────
+            # --- Confidentialité -----------------------------------------------
             - name: N8N_DIAGNOSTICS_ENABLED
               value: {{ .Values.n8n.diagnostics | quote }}
             - name: N8N_VERSION_NOTIFICATIONS_ENABLED
-              value: {{ .Values.n8n.versionNotifications | quote }}
-            - name: N8N_TEMPLATES_ENABLED
-              value: {{ .Values.n8n.templates | quote }}
+              value: "false"
             - name: N8N_PERSONALIZATION_ENABLED
-              value: {{ .Values.n8n.personalization | quote }}
+              value: "false"
             - name: N8N_HIRING_BANNER_ENABLED
               value: "false"
-            # ─── Exécution ─────────────────────────────────────────────────
-            - name: EXECUTIONS_MODE
-              value: {{ .Values.n8n.executionsMode | quote }}
-            - name: N8N_USER_FOLDER
-              value: "/home/node/.n8n"
-            # ─── Sécurité credentials ──────────────────────────────────────
+            - name: N8N_TEMPLATES_ENABLED
+              value: {{ .Values.n8n.templates | quote }}
+            # --- Sécurité ------------------------------------------------------
             - name: N8N_ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "n8n.fullname" . }}
-                  key: encryptionKey
-            # ─── Base de données ───────────────────────────────────────────
-            {{- if eq .Values.database.type "postgresdb" }}
+                  name: {{ $secretName }}
+                  key: N8N_ENCRYPTION_KEY
+            - name: N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS
+              value: "true"
+            - name: N8N_UNVERIFIED_PACKAGES_ENABLED
+              value: {{ .Values.n8n.unverifiedCommunityPackages | quote }}
+            # --- Stockage et exécution -----------------------------------------
+            - name: N8N_USER_FOLDER
+              value: {{ .Values.n8n.userFolder | quote }}
+            - name: N8N_DEFAULT_BINARY_DATA_MODE
+              value: filesystem
+            # Valeurs actuelles fixées : n8n annonce qu'elles vont baisser.
+            - name: N8N_RUNNERS_TASK_TIMEOUT
+              value: "300"
+            - name: N8N_COMPRESSION_NODE_MAX_DECOMPRESSED_SIZE_BYTES
+              value: "2147483648"
+            - name: N8N_COMPRESSION_NODE_MAX_ZIP_ENTRIES
+              value: "5000"
+            # --- Base de données -----------------------------------------------
+            {{- if eq $postgresMode "external" }}
             - name: DB_TYPE
-              value: "postgresdb"
+              value: postgresdb
             - name: DB_POSTGRESDB_HOST
               value: {{ .Values.database.postgres.host | quote }}
             - name: DB_POSTGRESDB_PORT
@@ -92,47 +120,209 @@ spec:
             - name: DB_POSTGRESDB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "n8n.fullname" . }}
-                  key: postgresPassword
+                  name: {{ $secretName }}
+                  key: DB_POSTGRESDB_PASSWORD
+            {{- else if eq $postgresMode "discovery" }}
+            {{- $pgSecret := include "library-chart.secretNamePostgreSQL" . }}
+            - name: DB_TYPE
+              value: postgresdb
+            {{- range $env, $key := dict "DB_POSTGRESDB_HOST" "PGHOST" "DB_POSTGRESDB_PORT" "PGPORT" "DB_POSTGRESDB_DATABASE" "PGDATABASE" "DB_POSTGRESDB_USER" "PGUSER" "DB_POSTGRESDB_PASSWORD" "PGPASSWORD" }}
+            - name: {{ $env }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $pgSecret }}
+                  key: {{ $key }}
+            {{- end }}
             {{- else }}
             - name: DB_TYPE
-              value: "sqlite"
-            - name: DB_SQLITE_VACUUM_ON_STARTUP
-              value: "true"
+              value: sqlite
+            - name: DB_SQLITE_POOL_SIZE
+              value: "2"
             {{- end }}
-            # ─── Proxy headers (ingress nginx) ─────────────────────────────
-            - name: N8N_PROXY_HOPS
-              value: "1"
-          resources:
-            {{- toYaml .Values.resources | nindent 12 }}
-          {{- if .Values.probes.liveness.enabled }}
+            {{- range $name, $value := .Values.n8n.extraEnv }}
+            - name: {{ $name }}
+              value: {{ $value | quote }}
+            {{- end }}
+          # Premier démarrage et migrations de base : jusqu'à 5 minutes.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60
           livenessProbe:
             httpGet:
               path: /healthz
               port: http
-            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
-            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
-            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
-            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
-          {{- end }}
-          {{- if .Values.probes.readiness.enabled }}
+            periodSeconds: 30
+            timeoutSeconds: 5
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: /healthz/readiness
               port: http
-            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
-            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
-            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
-            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
-          {{- end }}
+            periodSeconds: 10
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
             - name: data
               mountPath: /home/node/.n8n
+        {{- if .Values.provisioning.enabled }}
+        # Crée le compte owner puis la clé API du MCP, par localhost. Voir
+        # files/provision.mjs.
+        - name: provisioning
+          image: "{{ .Values.service.image.repository }}:{{ .Values.service.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.service.image.pullPolicy }}
+          command: ["node", "/provision/provision.mjs"]
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          env:
+            - name: N8N_URL
+              value: "http://127.0.0.1:5678"
+            - name: OWNER_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: OWNER_EMAIL
+            - name: OWNER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: OWNER_PASSWORD
+            - name: OWNER_FIRST_NAME
+              value: {{ .Values.owner.firstName | quote }}
+            - name: OWNER_LAST_NAME
+              value: {{ .Values.owner.lastName | quote }}
+            - name: CREATE_API_KEY
+              value: {{ .Values.mcp.enabled | quote }}
+            - name: API_KEY_LABEL
+              value: {{ .Values.provisioning.apiKeyLabel | quote }}
+            - name: API_KEY_SCOPE_PREFIXES
+              value: {{ .Values.provisioning.apiKeyScopePrefixes | quote }}
+            - name: API_KEY_FILE
+              value: "/home/node/.n8n/{{ $apiKeyRelPath }}"
+          resources:
+            {{- toYaml .Values.provisioning.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /home/node/.n8n
+            - name: provision
+              mountPath: /provision
+              readOnly: true
+        {{- end }}
+        {{- if .Values.mcp.enabled }}
+        - name: mcp
+          image: "{{ .Values.mcp.image.repository }}:{{ .Values.mcp.image.tag }}"
+          imagePullPolicy: {{ .Values.mcp.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          # n8n-mcp ne lit la clé API que dans l'environnement : on la charge
+          # depuis le volume partagé, puis on passe la main à l'entrypoint de
+          # l'image. Sans clé après 5 minutes, le serveur démarre quand même :
+          # documentation et recherche de nœuds restent disponibles.
+          command:
+            - /bin/sh
+            - -c
+            - |
+              key_file="/n8n-data/{{ $apiKeyRelPath }}"
+              i=0
+              while [ ! -s "$key_file" ] && [ "$i" -lt 150 ]; do i=$((i + 1)); sleep 2; done
+              if [ -r "$key_file" ]; then
+                N8N_API_KEY=$(cat "$key_file")
+                export N8N_API_KEY
+                echo "[mcp] clé API n8n chargée"
+              else
+                echo "[mcp] clé API n8n absente : outils de gestion des workflows indisponibles"
+              fi
+              exec /usr/local/bin/docker-entrypoint.sh node dist/mcp/index.js
+          ports:
+            - name: mcp
+              containerPort: {{ .Values.networking.mcp.port }}
+              protocol: TCP
+          env:
+            - name: MCP_MODE
+              value: http
+            - name: NODE_ENV
+              value: production
+            - name: HOST
+              value: "0.0.0.0"
+            - name: PORT
+              value: {{ .Values.networking.mcp.port | quote }}
+            - name: BASE_URL
+              value: "https://{{ .Values.mcp.hostname }}"
+            - name: TRUST_PROXY
+              value: "1"
+            - name: CORS_ORIGIN
+              value: {{ .Values.mcp.corsOrigin | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.mcp.logLevel | quote }}
+            - name: WEBHOOK_SECURITY_MODE
+              value: {{ .Values.mcp.securityMode | quote }}
+            - name: N8N_MCP_TELEMETRY_DISABLED
+              value: "true"
+            - name: N8N_API_URL
+              value: "http://127.0.0.1:5678"
+            # /app/data appartient à l'utilisateur de l'image, pas à l'uid 1000.
+            - name: NODE_DB_PATH
+              value: /mcp-cache/nodes.db
+            - name: AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: MCP_AUTH_TOKEN
+          # /health répond sans jeton : utilisable en sonde.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: mcp
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: mcp
+            periodSeconds: 10
+            timeoutSeconds: 5
+            # Le wrapper peut attendre la clé jusqu'à 5 minutes.
+            failureThreshold: 40
+          resources:
+            {{- toYaml .Values.mcp.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /n8n-data
+              readOnly: true
+            - name: mcp-cache
+              mountPath: /mcp-cache
+        {{- end }}
       volumes:
         - name: data
           {{- if .Values.persistence.enabled }}
           persistentVolumeClaim:
-            claimName: {{ include "n8n.fullname" . }}
+            claimName: {{ .Values.persistence.existingClaim | default $fullName }}
           {{- else }}
           emptyDir: {}
           {{- end }}
+        {{- if .Values.provisioning.enabled }}
+        - name: provision
+          configMap:
+            name: {{ $fullName }}-provision
+        {{- end }}
+        {{- if .Values.mcp.enabled }}
+        # Base de documentation des nœuds (environ 65 Mo), recopiée au démarrage.
+        - name: mcp-cache
+          emptyDir:
+            sizeLimit: 256Mi
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
