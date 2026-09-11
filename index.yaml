@@ -3,14 +3,14 @@ entries:
   n8n:
   - apiVersion: v2
     appVersion: 2.38.6
-    created: "2026-09-11T11:37:22.160930545Z"
+    created: "2026-09-11T11:44:01.541348078Z"
     dependencies:
     - name: library-chart
       repository: https://inseefrlab.github.io/helm-charts-interactive-services
       version: 2.1.7
     description: Workflow automation platform, with an optional MCP server to build
       and run workflows from an AI assistant.
-    digest: afdb0a09a14c7fc26c24f2fc969a87f780302b92f4bf691b26355c5150e6958d
+    digest: d3582562ca289ff357b8a0ad9fcee01860eae2499378b5494879195bb802a8eb
     home: https://nic01asfr.github.io/n8n-onyxia/
     icon: https://nic01asfr.github.io/n8n-onyxia/assets/n8n.svg
     keywords:
@@ -158,4 +158,4 @@ entries:
     urls:
     - https://nic01asfr.github.io/n8n-onyxia/n8n-mcp-0.1.0.tgz
     version: 0.1.0
-generated: "2026-09-11T11:37:22.159012812Z"
+generated: "2026-09-11T11:44:01.540110509Z"
