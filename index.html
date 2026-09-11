@@ -148,7 +148,7 @@
 <body>
   <div class="topbar">
     <img src="assets/n8n.svg" alt="" />
-    <span class="crumb"><b>n8n pour Onyxia</b> · chart 1.0.0</span>
+    <span class="crumb"><b>n8n pour Onyxia</b> · chart 1.0.1</span>
     <span class="status"><span class="dot" aria-hidden="true"></span> SSPCloud · Onyxia · open source</span>
   </div>
   <header class="hero">
@@ -267,7 +267,7 @@
         <h3>Helm</h3>
         <p>Pour régler chaque valeur toi-même :</p>
         <pre class="code"><code>helm repo add n8n-onyxia https://nic01asfr.github.io/n8n-onyxia
-helm install n8n n8n-onyxia/n8n --version 1.0.0 \
+helm install n8n n8n-onyxia/n8n --version 1.0.1 \
   --set ingress.hostname=user-IDEP-n8n.user.lab.sspcloud.fr \
   --set mcp.hostname=user-IDEP-n8n-mcp.user.lab.sspcloud.fr \
   --set ingress.ingressClassName=onyxia \
@@ -338,6 +338,7 @@ helm uninstall n8n-mcp</code></pre>
     <section id="journal">
     <h2><span class="sec-label">Journal</span> Versions</h2>
     <div class="journal">
+      <div><b>chart 1.0.1</b><p>Testé comme un utilisateur dans la console Onyxia&nbsp;: le bouton «&nbsp;Ouvrir&nbsp;» mène à l’éditeur, l’adresse MCP reste lisible dans la fenêtre du service, interface n8n homogène.</p></div>
       <div><b>chart 1.0.0</b><p>n8n 2.x, serveur MCP intégré au même service, provisioning dans le pod sans droit Kubernetes, formulaire et notes aux conventions Onyxia, PostgreSQL découvert automatiquement.</p></div>
       <div><b>chart 0.2.0</b><p>Deux charts séparés (n8n et n8n-mcp) et un script d'installation qui créait la clé API depuis le terminal Jupyter.</p></div>
     </div>
