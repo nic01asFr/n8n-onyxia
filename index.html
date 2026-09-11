@@ -1,40 +1,351 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8">
-  <title>n8n-onyxia · Helm charts pour SSPCloud</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>n8n pour Onyxia</title>
+  <meta name="description" content="Ton instance n8n sur SSPCloud, prête en deux minutes&nbsp;: éditeur de workflows, webhooks publics, et un serveur MCP pour que ton assistant IA construise les workflows avec toi." />
+  <meta property="og:title" content="n8n pour Onyxia" />
+  <meta property="og:description" content="Ton instance n8n sur SSPCloud, prête en deux minutes&nbsp;: éditeur de workflows, webhooks publics, et un serveur MCP pour que ton assistant IA construise les workflows avec toi." />
+  <meta property="og:type" content="website" />
+  <meta name="theme-color" content="#1b1a23" />
+  <link rel="canonical" href="https://nic01asfr.github.io/n8n-onyxia/" />
+  <link rel="icon" href="assets/n8n.svg" type="image/svg+xml" />
+  <base href="/n8n-onyxia/" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
   <style>
-    body { font-family: -apple-system, sans-serif; max-width: 760px; margin: 2em auto; padding: 0 1em; line-height: 1.5; }
-    code, pre { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-size: 0.95em; }
-    pre { padding: 1em; overflow-x: auto; }
-    h1 { border-bottom: 2px solid #eee; padding-bottom: .3em; }
-    a { color: #0366d6; }
+    /* Jetons repris de l'éditeur n8n : canevas sombre, nœuds gris bleutés,
+       corail de marque pour l'accent. */
+    :root {
+      --accent: #EA4B71;
+      --accent-soft: rgba(234, 75, 113, 0.14);
+      --bg: #1b1a23;
+      --canvas: #16151c;
+      --grid: #25242e;
+      --node: #2a2934;
+      --node-line: #3b3a47;
+      --ink: #f1f0f5;
+      --soft: #cfcdd8;
+      --muted: #9795a6;
+      --line: #2e2d39;
+      --ok: #4bb98a;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: "Open Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-size: 15px; line-height: 1.6;
+      color: var(--ink); background: var(--bg);
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    ::selection { background: var(--accent-soft); }
+    .wrap { width: min(960px, calc(100% - 2.5rem)); margin: 0 auto; }
+
+    .topbar {
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      padding: 10px 20px; border-bottom: 1px solid var(--line);
+      background: var(--canvas);
+    }
+    .topbar img { width: 22px; height: 22px; }
+    .crumb { font-family: "JetBrains Mono", monospace; font-size: 12px; color: var(--muted); }
+    .crumb b { color: var(--soft); font-weight: 600; }
+    .status { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+
+    header.hero { padding: clamp(2.6rem, 8vw, 4.4rem) 0 1.2rem; }
+    .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: var(--accent); margin: 0 0 12px; }
+    .brand { font-weight: 700; font-size: clamp(2.2rem, 6.5vw, 3.4rem); letter-spacing: -0.02em; line-height: 1.08; margin: 0 0 0.8rem; }
+    .pitch { font-size: clamp(1rem, 2.2vw, 1.13rem); max-width: 44rem; color: var(--soft); margin: 0 0 1.2rem; }
+    .tags { display: flex; flex-wrap: wrap; gap: 0.45rem; margin: 0 0 1.4rem; }
+    .tag { font-family: "JetBrains Mono", monospace; font-size: 11px; padding: 3px 9px; border-radius: 999px; background: var(--node); color: var(--soft); border: 1px solid var(--node-line); }
+    .cta { display: flex; flex-wrap: wrap; gap: 0.65rem; margin-bottom: 1.4rem; }
+    .btn { font-weight: 600; font-size: 13.5px; padding: 9px 16px; border-radius: 8px; display: inline-flex; align-items: center; }
+    .btn:hover { text-decoration: none; }
+    .btn.primary { background: var(--accent); color: #fff; }
+    .btn.primary:hover { filter: brightness(1.08); }
+    .btn.ghost { color: var(--soft); border: 1px solid var(--node-line); }
+    .btn.ghost:hover { border-color: var(--accent); color: var(--ink); }
+
+    .code {
+      margin: 0.6rem 0; padding: 12px 14px; overflow-x: auto;
+      background: var(--canvas); border: 1px solid var(--line); border-radius: 8px;
+      font-family: "JetBrains Mono", monospace; font-size: 12.5px; line-height: 1.55; color: var(--soft);
+    }
+    .hero .code { max-width: 44rem; border-left: 3px solid var(--accent); }
+
+    .apercu { margin: 1.6rem 0 0; }
+    .canvas {
+      overflow-x: auto; border: 1px solid var(--line); border-radius: 12px;
+      background-color: var(--canvas);
+      background-image: radial-gradient(var(--grid) 1.2px, transparent 1.2px);
+      background-size: 20px 20px; padding: 10px;
+    }
+    .canvas svg { display: block; min-width: 640px; width: 100%; height: auto; }
+    .nd { fill: var(--node); stroke: var(--node-line); stroke-width: 1.5; }
+    .nd-accent { stroke: var(--accent); }
+    .port { fill: var(--muted); }
+    .edge { stroke: var(--muted); stroke-width: 2; fill: none; }
+    .nd-t { fill: var(--ink); font: 600 13px "Open Sans", sans-serif; }
+    .nd-s { fill: var(--muted); font: 11px "JetBrains Mono", monospace; }
+
+    main section, main aside { margin: 2.6rem 0; }
+    h2 { font-size: 17px; font-weight: 700; margin: 0 0 1rem; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+    h2 .sec-label { font-size: 10.5px; font-weight: 700; letter-spacing: 1.3px; text-transform: uppercase; color: var(--accent); }
+    h3 { font-size: 14.5px; font-weight: 700; margin: 0 0 0.4rem; }
+    .lead, .accroche { max-width: 46rem; color: var(--soft); }
+
+    .chiffres { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-top: 1.2rem; }
+    .chiffres div { padding: 14px 15px; background: var(--node); border: 1px solid var(--node-line); border-radius: 10px; }
+    .chiffres strong { font-family: "JetBrains Mono", monospace; font-size: 1.45rem; display: block; color: var(--ink); }
+    .chiffres span { color: var(--muted); font-size: 12.5px; }
+
+    .points { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+    .points li { padding: 13px 15px; background: var(--node); border: 1px solid var(--node-line); border-radius: 10px; color: var(--soft); }
+    .points b { display: block; color: var(--ink); margin-bottom: 0.15rem; }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+    .node-card {
+      position: relative; padding: 15px 16px; min-width: 0;
+      background: var(--node); border: 1px solid var(--node-line); border-radius: 10px;
+    }
+    .node-card::before {
+      content: ""; position: absolute; left: -6px; top: 22px;
+      width: 10px; height: 10px; border-radius: 50%; background: var(--muted);
+    }
+    .node-card p { margin: 0; color: var(--soft); font-size: 13.8px; }
+    .node-card p + p, .node-card .code + p { margin-top: 0.6rem; }
+    .note { color: var(--muted) !important; font-size: 12.5px !important; margin-top: 0.6rem !important; }
+
+    .steps { list-style: none; padding: 0; margin: 0 0 1rem; display: grid; gap: 10px; }
+    .steps li { display: grid; grid-template-columns: 2rem 1fr; gap: 0.8rem; padding: 12px 14px; background: var(--node); border: 1px solid var(--node-line); border-radius: 10px; }
+    .steps .n { font-family: "JetBrains Mono", monospace; font-weight: 600; color: var(--accent); }
+    .steps p { margin: 0.2rem 0 0; color: var(--muted); font-size: 13.5px; }
+
+    .encart { padding: 16px 18px; background: var(--accent-soft); border: 1px solid var(--accent); border-radius: 12px; }
+    .encart h2 { margin-bottom: 0.5rem; }
+    .encart p { color: var(--soft); margin: 0 0 0.8rem; }
+
+    .journal { border-left: 2px solid var(--line); padding-left: 1.1rem; }
+    .journal div { margin-bottom: 1rem; }
+    .journal b { font-family: "JetBrains Mono", monospace; font-size: 12px; color: var(--accent); }
+    .journal p { margin: 0.2rem 0 0; color: var(--muted); font-size: 13.5px; }
+
+    footer { margin: 3rem auto 2rem; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12.5px; }
+    @media (prefers-reduced-motion: no-preference) {
+      .hero .brand, .hero .pitch, .hero .cta, .apercu { animation: rise 0.5s ease both; }
+      .hero .pitch { animation-delay: 0.05s; }
+      .hero .cta { animation-delay: 0.1s; }
+      .apercu { animation-delay: 0.15s; }
+      @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    }
   </style>
 </head>
 <body>
-  <h1>n8n-onyxia</h1>
-  <p>Charts Helm pour déployer <strong>n8n</strong> + serveur <strong>MCP</strong> dans un namespace SSPCloud Onyxia.</p>
+  <div class="topbar">
+    <img src="assets/n8n.svg" alt="" />
+    <span class="crumb"><b>n8n pour Onyxia</b> · chart 1.0.0</span>
+    <span class="status"><span class="dot" aria-hidden="true"></span> SSPCloud · Onyxia · open source</span>
+  </div>
+  <header class="hero">
+    <div class="wrap">
+      <p class="eyebrow">Service Onyxia</p>
+      <h1 class="brand">n8n pour Onyxia</h1>
+      <p class="pitch">Ton instance n8n sur SSPCloud, prête en deux minutes&nbsp;: éditeur de workflows, webhooks publics, et un serveur MCP pour que ton assistant IA construise les workflows avec toi.</p>
+      <div class="tags"><span class="tag">n8n</span><span class="tag">MCP</span><span class="tag">Onyxia</span><span class="tag">SSPCloud</span><span class="tag">Helm</span></div>
+      <div class="cta">
+        <a class="btn primary" href="#installer">Installer</a>
+        <a class="btn ghost" href="https://github.com/nic01asFr/n8n-onyxia">Code source</a>
+      </div>
+      <pre class="code"><code>curl -sL https://nic01asfr.github.io/n8n-onyxia/install.sh | bash</code></pre>
+      <figure id="apercu" class="apercu" aria-label="Exemple de workflow n8n">
+    <div class="canvas">
+      <svg viewBox="0 0 712 112" role="img">
+        <title>Webhook, puis Code, puis HTTP Request, piloté par un assistant MCP</title>
+        <path d="M156 56 C 176 56, 176 56, 196 56" class="edge"/><path d="M336 56 C 356 56, 356 56, 376 56" class="edge"/><path d="M516 56 C 536 56, 536 56, 556 56" class="edge"/>
+      <g transform="translate(16 20)">
+        <rect width="140" height="72" rx="10" class="nd"/>
+        <circle cx="0" cy="36" r="5" class="port"/><circle cx="140" cy="36" r="5" class="port"/>
+        <text x="16" y="32" class="nd-t">Webhook</text>
+        <text x="16" y="52" class="nd-s">POST /webhook</text>
+      </g>
+      <g transform="translate(196 20)">
+        <rect width="140" height="72" rx="10" class="nd"/>
+        <circle cx="0" cy="36" r="5" class="port"/><circle cx="140" cy="36" r="5" class="port"/>
+        <text x="16" y="32" class="nd-t">Code</text>
+        <text x="16" y="52" class="nd-s">transformer</text>
+      </g>
+      <g transform="translate(376 20)">
+        <rect width="140" height="72" rx="10" class="nd"/>
+        <circle cx="0" cy="36" r="5" class="port"/><circle cx="140" cy="36" r="5" class="port"/>
+        <text x="16" y="32" class="nd-t">HTTP Request</text>
+        <text x="16" y="52" class="nd-s">API externe</text>
+      </g>
+      <g transform="translate(556 20)">
+        <rect width="140" height="72" rx="10" class="nd nd-accent"/>
+        <circle cx="0" cy="36" r="5" class="port"/><circle cx="140" cy="36" r="5" class="port"/>
+        <text x="16" y="32" class="nd-t">Assistant MCP</text>
+        <text x="16" y="52" class="nd-s">Claude, Cursor</text>
+      </g>
+      </svg>
+    </div>
+  </figure>
+    </div>
+  </header>
+  <main class="wrap">
+    <section id="produit">
+      <p class="accroche">n8n relie des API, des bases et des fichiers par des workflows visuels. Ce chart le lance dans ton espace SSPCloud comme n'importe quel service Onyxia&nbsp;: URL publique, mot de passe affiché dans «&nbsp;Mes services&nbsp;», données sur un volume persistant. Le serveur MCP livré avec lui donne à Claude, Cursor ou tout client MCP de quoi lire, créer et déboguer tes workflows.</p>
+      <div class="chiffres">
+      <div><strong>2.38.6</strong><span>version de n8n</span></div>
+      <div><strong>2.84.0</strong><span>version du serveur MCP</span></div>
+      <div><strong>0</strong><span>droit Kubernetes demandé par le pod</span></div>
+      <div><strong>1</strong><span>commande pour tout installer</span></div>
+    </div>
+    </section>
+    <section id="promesse">
+      <h2><span class="sec-label">Promesse</span> Ce que ça change</h2>
+      <ul class="points">
+      <li><b>Un service Onyxia comme les autres</b> Formulaire, bouton «&nbsp;Ouvrir&nbsp;», mot de passe à copier, mise en veille&nbsp;: le chart suit les conventions des catalogues officiels InseeFrLab.</li>
+      <li><b>Rien d'ouvert par défaut</b> Le compte owner existe dès le démarrage, le serveur MCP exige un jeton Bearer, et la clé API qu'il utilise ne touche ni aux utilisateurs ni aux réglages de sécurité.</li>
+      <li><b>Tes données restent chez toi</b> Workflows, credentials chiffrées et base SQLite vivent sur un volume de ton namespace. PostgreSQL Onyxia en option.</li>
+    </ul>
+    </section>
+    <section id="fonctionnalites">
+    <h2><span class="sec-label">Capacités</span> Ce que tu peux faire</h2>
+    <div class="grid">
+      <article class="node-card">
+        <h3>Plus de 400 intégrations</h3>
+        <p>API REST, bases de données, S3, messageries, LLM&nbsp;: chaque nœud se configure dans l'éditeur, les credentials sont chiffrées.</p>
+        <p class="note">Pour qui&nbsp;: toute personne qui enchaîne des outils à la main.</p>
+      </article>
+      <article class="node-card">
+        <h3>Workflows pilotés par un assistant</h3>
+        <p>Rechercher un nœud, valider un workflow, le créer, le mettre à jour, lire ses exécutions&nbsp;: le serveur n8n-mcp expose ces outils au protocole MCP.</p>
+        <p class="note">Pour qui&nbsp;: les utilisateurs de Claude Code, Claude Desktop ou Cursor.</p>
+      </article>
+      <article class="node-card">
+        <h3>PostgreSQL Onyxia découvert automatiquement</h3>
+        <p>Coche une case&nbsp;: si ton projet héberge un service PostgreSQL, n8n y range ses données au lieu de SQLite.</p>
+        <p class="note">Pour qui&nbsp;: les équipes qui partagent une instance.</p>
+      </article>
+      <article class="node-card">
+        <h3>Accès restreint en option</h3>
+        <p>Liste d'IP autorisées et politique réseau, reprises des réglages de ta région Onyxia.</p>
+        <p class="note">Pour qui&nbsp;: les instances qui traitent des données sensibles.</p>
+      </article>
+    </div>
+  </section>
+    <section id="parcours">
+    <h2><span class="sec-label">Parcours</span> Le parcours</h2>
+    <ol class="steps">
+      <li><span class="n">1</span><div><b>Tu lances le service</b><p>Depuis le catalogue Onyxia, ou en une commande depuis un terminal Jupyter. Onyxia renseigne l'adresse, ton email et un mot de passe à usage unique.</p></div></li>
+      <li><span class="n">2</span><div><b>Le pod se prépare seul</b><p>Un conteneur annexe crée ton compte owner avant que quiconque n'atteigne l'URL, puis une clé API aux droits limités pour le serveur MCP. Aucun droit Kubernetes n'est demandé.</p></div></li>
+      <li><span class="n">3</span><div><b>Tu ouvres l'éditeur</b><p>Le bouton «&nbsp;Ouvrir&nbsp;» d'Onyxia mène à n8n&nbsp;; identifiant et mot de passe sont dans les notes du service, avec le bouton de copie.</p></div></li>
+      <li><span class="n">4</span><div><b>Tu branches ton assistant</b><p>Les notes donnent l'adresse MCP, le jeton et la commande «&nbsp;claude mcp add&nbsp;» prête à coller. Tu décris un workflow, l'assistant le construit dans ton instance.</p></div></li>
+    </ol>
+  </section>
+    <section id="installer">
+    <h2><span class="sec-label">Installer</span> Trois façons de lancer n8n</h2>
+    <div class="grid">
+      <article class="node-card">
+        <h3>Terminal Jupyter</h3>
+        <p>Lance un service Jupyter avec le rôle Kubernetes <b>Edit</b>, puis :</p>
+        <pre class="code"><code>curl -sL https://nic01asfr.github.io/n8n-onyxia/install.sh | bash</code></pre>
+        <p class="note">Hôtes, mot de passe et enregistrement dans « Mes services » sont faits pour toi.</p>
+      </article>
+      <article class="node-card">
+        <h3>Catalogue Onyxia</h3>
+        <p>Une fois ce dépôt référencé comme catalogue par les administrateurs de ta plateforme, n8n se lance depuis le formulaire, comme les services officiels.</p>
+        <pre class="code"><code>https://nic01asfr.github.io/n8n-onyxia/index.yaml</code></pre>
+        <p class="note">Adresse du dépôt Helm à déclarer côté Onyxia.</p>
+      </article>
+      <article class="node-card">
+        <h3>Helm</h3>
+        <p>Pour régler chaque valeur toi-même :</p>
+        <pre class="code"><code>helm repo add n8n-onyxia https://nic01asfr.github.io/n8n-onyxia
+helm install n8n n8n-onyxia/n8n --version 1.0.0 \
+  --set ingress.hostname=user-IDEP-n8n.user.lab.sspcloud.fr \
+  --set mcp.hostname=user-IDEP-n8n-mcp.user.lab.sspcloud.fr \
+  --set ingress.ingressClassName=onyxia \
+  --set security.email=toi@exemple.fr \
+  --set security.password=N8n-motdepasse</code></pre>
+      </article>
+    </div>
+  </section>
+    <section id="mcp">
+    <h2><span class="sec-label">Assistant</span> Brancher Claude sur ton n8n</h2>
+    <p class="lead">Les notes du service donnent l'adresse et le jeton exacts. Avec Claude Code :</p>
+    <pre class="code"><code>claude mcp add n8n --transport http https://user-IDEP-n8n-mcp.user.lab.sspcloud.fr/mcp \
+  --header &quot;Authorization: Bearer &lt;jeton affiché dans les notes&gt;&quot;</code></pre>
+    <p class="lead">Puis demande par exemple : « Crée un workflow qui récupère chaque matin le flux RSS de l'Insee et me l'envoie par mail. »</p>
+  </section>
+    <section id="usages">
+    <h2><span class="sec-label">Usages</span> Quand ça compte</h2>
+    <div class="grid">
+      <article class="node-card">
+        <h3>Automatiser une chaîne de traitement</h3>
+        <p>Récupérer un fichier chaque nuit, le déposer sur ton S3 SSPCloud, prévenir l'équipe.</p>
+        <p class="note">Le planificateur de n8n tourne dans ton espace, près de tes données.</p>
+      </article>
+      <article class="node-card">
+        <h3>Recevoir des webhooks</h3>
+        <p>GitHub, un formulaire, un outil métier&nbsp;: n8n expose une URL publique en HTTPS pour chacun.</p>
+        <p class="note">Le certificat du domaine SSPCloud couvre l'hôte du service, sans rien configurer.</p>
+      </article>
+      <article class="node-card">
+        <h3>Prototyper avec un assistant</h3>
+        <p>Tu décris le besoin en langage naturel&nbsp;; l'assistant cherche les bons nœuds, écrit le workflow et lit les exécutions en échec.</p>
+        <p class="note">Le serveur MCP connaît le catalogue complet des nœuds n8n.</p>
+      </article>
+    </div>
+  </section>
+    <aside class="encart">
+    <h2>Pourquoi un chart dédié</h2>
+    <p>Lancer l'image n8n ne suffit pas sur SSPCloud&nbsp;: l'écran de création du compte admin reste ouvert au premier visiteur, et un mot de passe rangé dans un Secret Kubernetes est introuvable depuis l'interface. Ce chart règle les deux sans droit supplémentaire.</p>
+    <p><a class="btn ghost" href="https://github.com/nic01asFr/n8n-onyxia/tree/main/charts/n8n">Lire le chart</a></p>
+  </aside>
+    <section id="stack">
+    <h2><span class="sec-label">Stack</span> Stack ouverte</h2>
+    <p class="lead">Tout est public et versionné&nbsp;: le chart, le script d'installation, le code du provisioning.</p>
+    <div class="tags"><span class="tag">n8n (Sustainable Use License)</span><span class="tag">czlonkowski/n8n-mcp (MIT)</span><span class="tag">library-chart InseeFrLab</span><span class="tag">Helm, Kubernetes, Onyxia</span></div>
+  </section>
+    <section id="migration">
+    <h2><span class="sec-label">Migration</span> Depuis les charts 0.x</h2>
+    <p class="lead">Les charts 0.x installaient n8n 1.x et un chart n8n-mcp séparé. Le passage à n8n 2.x migre la base : le script d'installation refuse donc de mettre à jour une release 0.x sans toi.</p>
+    <ol class="steps">
+      <li><span class="n">1</span><div><b>Sauvegarde</b><p>Exporte le volume et la clé de chiffrement.</p></div></li>
+      <li><span class="n">2</span><div><b>Mise à jour en conservant les données</b><p>Les charts 0.x rangeaient les données dans « .n8n/.n8n » : garde ce chemin et la clé existante.</p></div></li>
+      <li><span class="n">3</span><div><b>Nettoyage</b><p>Une fois n8n vérifié, supprime l'ancienne release n8n-mcp.</p></div></li>
+    </ol>
+    <pre class="code"><code>kubectl exec deploy/n8n -- tar czf - -C /home/node/.n8n . &gt; n8n-backup.tar.gz
+kubectl get secret n8n -o jsonpath='{.data.encryptionKey}' | base64 -d &gt; n8n-encryption-key.txt
 
-  <h2>Installation rapide (depuis un terminal Jupyter SSPCloud)</h2>
-  <pre>curl -sL https://nic01asfr.github.io/n8n-onyxia/install.sh | bash</pre>
+helm upgrade n8n n8n-onyxia/n8n \
+  --set n8n.userFolder=/home/node/.n8n \
+  --set n8n.encryptionKey=&quot;$(cat n8n-encryption-key.txt)&quot; \
+  --set ingress.hostname=user-IDEP-n8n.user.lab.sspcloud.fr \
+  --set mcp.hostname=user-IDEP-n8n-mcp.user.lab.sspcloud.fr \
+  --set ingress.ingressClassName=onyxia \
+  --set security.email=toi@exemple.fr \
+  --set persistence.keepOnUninstall=true
 
-  <h2>Installation via Helm (utilisateur avancé)</h2>
-  <pre>helm repo add nic01asfr https://nic01asfr.github.io/n8n-onyxia
-helm repo update
-helm install n8n nic01asfr/n8n \
-  --set owner.email=mon@email.fr \
-  --set n8n.host=user-MONIDEP-n8n.user.lab.sspcloud.fr</pre>
-
-  <h2>Intégration au catalogue Onyxia</h2>
-  <p>SSPCloud → Mon compte → Services → <em>Sources des services personnalisés</em> → ajouter :</p>
-  <pre>https://nic01asfr.github.io/n8n-onyxia</pre>
-  <p>Les charts apparaissent ensuite dans le catalogue, lançables en un clic.</p>
-
-  <h2>Ressources</h2>
-  <ul>
-    <li><a href="index.yaml">index.yaml</a> · index Helm</li>
-    <li><a href="install.sh">install.sh</a> · script d'installation</li>
-    <li><a href="https://github.com/nic01asFr/n8n-onyxia">Repo GitHub</a></li>
-  </ul>
+helm uninstall n8n-mcp</code></pre>
+  </section>
+    <section id="journal">
+    <h2><span class="sec-label">Journal</span> Versions</h2>
+    <div class="journal">
+      <div><b>chart 1.0.0</b><p>n8n 2.x, serveur MCP intégré au même service, provisioning dans le pod sans droit Kubernetes, formulaire et notes aux conventions Onyxia, PostgreSQL découvert automatiquement.</p></div>
+      <div><b>chart 0.2.0</b><p>Deux charts séparés (n8n et n8n-mcp) et un script d'installation qui créait la clé API depuis le terminal Jupyter.</p></div>
+    </div>
+  </section>
+  </main>
+  <footer class="wrap">
+    <p>Chart MIT · n8n sous <a href="https://docs.n8n.io/sustainable-use-license/">Sustainable Use License</a> · n8n-mcp MIT · <a href="https://github.com/nic01asFr/n8n-onyxia">github.com/nic01asFr/n8n-onyxia</a></p>
+    <p>Même langage visuel que l'éditeur n8n. Doc technique dans le dépôt. Projet indépendant, non affilié à n8n GmbH.</p>
+  </footer>
 </body>
 </html>
