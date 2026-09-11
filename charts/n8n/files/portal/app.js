@@ -314,41 +314,73 @@
 
   // ── Configurer ───────────────────────────────────────────────────────────
 
-  function renderAdminLogin(message) {
-    var input = h('input', { class: 'fr-input', type: 'password', id: 'cle-n8n', autocomplete: 'off' });
+  // Connexion à n8n, comme le serveur MCP y est connecté : avec le compte du
+  // service (email et mot de passe des notes Onyxia), ou une clé API. n8n
+  // vérifie lui-même ; le portail n'en garde qu'une session d'une heure.
+  function renderAdminLogin(message, mode) {
+    mode = mode || 'compte';
     var pending = false;
+    var fields = mode === 'compte'
+      ? {
+          email: h('input', { class: 'fr-input', type: 'email', id: 'n8n-email', autocomplete: 'username' }),
+          password: h('input', { class: 'fr-input', type: 'password', id: 'n8n-mdp', autocomplete: 'current-password' }),
+          mfaCode: h('input', { class: 'fr-input', type: 'text', id: 'n8n-mfa', inputmode: 'numeric', autocomplete: 'one-time-code' })
+        }
+      : { apiKey: h('input', { class: 'fr-input', type: 'password', id: 'cle-n8n', autocomplete: 'off' }) };
+
     function submit() {
-      if (pending || !input.value.trim()) return;
+      var body = {};
+      Object.keys(fields).forEach(function (k) { if (fields[k].value.trim()) body[k] = fields[k].value.trim(); });
+      if (pending || (mode === 'compte' ? !(body.email && body.password) : !body.apiKey)) return;
       pending = true;
-      api('POST', 'api/admin/login', { apiKey: input.value.trim() }).then(function (r) {
-        input.value = '';
+      if (mode === 'compte') body.email = body.email || '';
+      api('POST', 'api/admin/login', body).then(function (r) {
+        Object.keys(fields).forEach(function (k) { fields[k].value = ''; });
         state.session = r.session;
         writeSession(SESSION_KEY, r.session);
         if (state.catalog) { state.catalog.paired = true; state.catalog.isOwner = true; }
         renderConfig();
       }, function (error) {
         pending = false;
-        renderAdminLogin(error.message);
+        renderAdminLogin(error.message, mode);
       });
     }
-    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
+    Object.keys(fields).forEach(function (k) {
+      fields[k].addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
+    });
+
+    function group(id, label, hint, input) {
+      return h('div', { class: 'fr-input-group' }, [
+        h('label', { class: 'fr-label', for: id }, [label, hint ? h('span', { class: 'fr-hint-text', text: ' — ' + hint }) : null]),
+        input
+      ]);
+    }
+
+    var form = mode === 'compte'
+      ? [
+          group('n8n-email', 'Email du compte n8n', 'celui du service n8n, affiché dans ses notes sur Onyxia.', fields.email),
+          group('n8n-mdp', 'Mot de passe n8n', 'bouton « Copier le mot de passe » du service sur Onyxia.', fields.password),
+          group('n8n-mfa', 'Code de double authentification', 'seulement si elle est activée sur ce compte.', fields.mfaCode)
+        ]
+      : [group('cle-n8n', 'Clé API de votre n8n', 'dans n8n : Settings → n8n API → Create an API key.', fields.apiKey)];
+
     show(
       h('nav', { class: 'portail__retour' }, [button('← Actions', renderHome, 'tertiary-no-outline')]),
-      h('h1', { class: 'fr-h4', text: 'Configurer le portail' }),
-      message ? alertBox('error', message) : null,
-      h('div', { class: 'fr-input-group' }, [
-        h('label', { class: 'fr-label', for: 'cle-n8n' }, [
-          'Clé API de votre n8n',
-          h('span', { class: 'fr-hint-text', text: ' — dans n8n : Settings → n8n API → Create an API key. Elle ouvre une session d\'une heure et n\'est pas conservée.' })
-        ]),
-        input
-      ]),
-      state.catalog && !state.catalog.paired
-        ? h('p', { class: 'fr-text--sm', text: 'Première connexion : votre compte Grist deviendra le propriétaire de ce portail.' })
-        : null,
-      h('div', { class: 'fr-btns-group' }, [button('Se connecter', submit)])
+      h('h1', { class: 'fr-h4', text: 'Se connecter à n8n' }),
+      h('p', { class: 'fr-text--sm', text: 'Pour configurer le portail, prouvez que vous tenez ce n8n. Il vérifie lui-même ; seule une session d\'une heure est gardée.' }),
+      message ? alertBox('error', message) : null
     );
-    input.focus();
+    form.forEach(function (node) { root.appendChild(node); });
+    if (state.catalog && !state.catalog.paired) {
+      root.appendChild(h('p', { class: 'fr-text--sm', text: 'Première connexion : votre compte Grist deviendra le propriétaire de ce portail.' }));
+    }
+    root.appendChild(h('div', { class: 'fr-btns-group' }, [
+      button('Se connecter', submit),
+      button(mode === 'compte' ? 'Utiliser une clé API à la place' : 'Utiliser le compte n8n à la place', function () {
+        renderAdminLogin('', mode === 'compte' ? 'cle' : 'compte');
+      }, 'tertiary-no-outline')
+    ]));
+    (fields.email || fields.apiKey).focus();
   }
 
   function renderConfig() {

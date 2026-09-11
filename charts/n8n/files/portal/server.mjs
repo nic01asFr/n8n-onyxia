@@ -11,8 +11,12 @@
 //   destinataire : tout lecteur d'un document auquel le propriétaire a ouvert
 //                  des actions (compte Grist connecté, sauf choix contraire) ;
 //   propriétaire : le compte Grist associé au portail, connecté au mode
-//                  « Configurer » par une clé API de ce n8n, échangée contre
-//                  une session courte.
+//                  « Configurer » avec le compte de ce n8n (ou une clé API),
+//                  vérifié par n8n et échangé contre une session courte.
+//
+// Pour tout le reste (lister les workflows, créer son credential, lancer les
+// webhooks), le portail est connecté à n8n comme le serveur MCP : par la clé
+// API que le chart crée au démarrage, sans rien demander à personne.
 
 import { createServer } from "node:http";
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
@@ -304,8 +308,10 @@ export function createPortal({ config, store, verifyIdentity, n8n, now = Date.no
       });
     },
 
-    // Connexion du propriétaire : compte Grist connecté + clé API de ce n8n.
-    // Le premier compte à réussir devient propriétaire.
+    // Connexion du propriétaire : compte Grist connecté + preuve qu'on tient
+    // ce n8n, soit son compte (email, mot de passe, code de double
+    // authentification), soit une clé API. Le premier compte Grist à réussir
+    // devient propriétaire du portail.
     "POST /api/admin/login": async (req, res) => {
       if (!loginLimiter(clientIp(req))) throw new HttpError(429, "Trop de tentatives : patientez une minute.");
       const identity = await identify(req);
@@ -313,7 +319,13 @@ export function createPortal({ config, store, verifyIdentity, n8n, now = Date.no
         throw new HttpError(403, "Connectez-vous à Grist avant de configurer le portail.");
       }
       const body = await readJson(req);
-      if (!(await n8n.checkApiKey(body.apiKey))) throw new HttpError(401, "Clé API n8n refusée par ce n8n.");
+      if (body.email !== undefined) {
+        const account = await n8n.checkAccount({ email: body.email, password: body.password, mfaCode: body.mfaCode });
+        if (!account.ok) throw new HttpError(401, "Email ou mot de passe n8n refusé par ce n8n.");
+        if (!account.admin) throw new HttpError(403, "Ce compte n8n n'est ni propriétaire ni administrateur de l'instance.");
+      } else if (!(await n8n.checkApiKey(body.apiKey))) {
+        throw new HttpError(401, "Clé API n8n refusée par ce n8n.");
+      }
       const ok = await store.pairOwner({ origin: identity.origin, userId: identity.userId });
       if (!ok) throw new HttpError(403, "Ce portail est associé à un autre compte Grist.");
       log(`session ouverte pour ${identity.origin} utilisateur ${identity.userId}`);

@@ -180,6 +180,41 @@ export function createN8nClient({ baseUrl, apiKeyFile, webhookSecret = "", fetch
       return api(`/workflows/${encodeURIComponent(id)}`);
     },
 
+    // Compte n8n présenté par quelqu'un qui veut administrer le portail : n8n
+    // le vérifie lui-même (/rest/login, sur localhost). Seuls le propriétaire
+    // et les administrateurs de l'instance passent. La session ouverte chez n8n
+    // pour cette vérification est refermée aussitôt ; rien n'est conservé.
+    async checkAccount({ email, password, mfaCode }) {
+      if (!email || !password) return { ok: false };
+      const headers = { "content-type": "application/json", "browser-id": "portail-verification" };
+      let response;
+      try {
+        response = await fetchImpl(`${baseUrl}/rest/login`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ emailOrLdapLoginId: String(email), password: String(password), ...(mfaCode ? { mfaCode: String(mfaCode) } : {}) }),
+          signal: AbortSignal.timeout(15000),
+        });
+      } catch {
+        throw new N8nError("n8n ne répond pas.", 503);
+      }
+      const body = await response.json().catch(() => ({}));
+      if (response.status !== 200) {
+        // n8n signale ainsi un compte à double authentification sans code.
+        if (body?.code === 998 || /mfa/i.test(String(body?.message))) {
+          throw new N8nError("Ce compte n8n a la double authentification : saisissez aussi le code.", 401);
+        }
+        return { ok: false };
+      }
+      const user = body?.data || {};
+      const cookie = (response.headers.getSetCookie?.() ?? []).map((c) => c.split(";")[0]).find((c) => c.startsWith("n8n-auth="));
+      if (cookie) {
+        await fetchImpl(`${baseUrl}/rest/logout`, { method: "POST", headers: { ...headers, cookie } }).catch(() => {});
+      }
+      const role = String(user.role || "");
+      return { ok: true, admin: user.isOwner === true || role === "global:owner" || role === "global:admin", role };
+    },
+
     // Une clé API présentée par quelqu'un qui veut administrer le portail :
     // valide si n8n l'accepte pour lire les workflows.
     async checkApiKey(key) {

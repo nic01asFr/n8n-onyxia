@@ -91,6 +91,30 @@ test("le mode Configurer s'ouvre avec une clé API de ce n8n, pour le compte ass
   assert.equal(JSON.parse(readFileSync(p.config.storeFile, "utf8")).owner.userId, OWNER);
 });
 
+// Comme le serveur MCP est connecté à n8n : le propriétaire entre avec le
+// compte du service, sans avoir à fabriquer de clé.
+test("le mode Configurer s'ouvre aussi avec le compte n8n du service", async (t) => {
+  const p = await startPortal();
+  t.after(p.close);
+  const account = (body, as = "owner") => p.call("POST", "/api/admin/login", { as, body });
+  assert.equal((await account({ email: "proprietaire@example.org", password: "faux" })).status, 401);
+  // Un simple membre de l'instance ne configure pas le portail.
+  assert.equal((await account({ email: "membre@example.org", password: "Membre-2passe" })).status, 403);
+  // Double authentification : sans code, le portail le dit ; avec, il passe.
+  const noCode = await account({ email: "mfa@example.org", password: "Mfa-2passe" });
+  assert.equal(noCode.status, 401);
+  assert.match(noCode.json.error, /double authentification/);
+  const ok = await account({ email: "proprietaire@example.org", password: "Bon-Mot-2passe" });
+  assert.equal(ok.status, 200, JSON.stringify(ok.json));
+  assert.equal(JSON.stringify(ok.json).includes("Bon-Mot-2passe"), false);
+  assert.equal(p.n8n.sessions.closed, p.n8n.sessions.opened, "la session ouverte chez n8n pour vérifier est refermée");
+  assert.equal((await p.call("GET", "/api/admin/state", { session: ok.json.session })).status, 200);
+  // Même compte n8n, autre compte Grist : refusé, le portail a déjà un propriétaire.
+  assert.equal((await account({ email: "proprietaire@example.org", password: "Bon-Mot-2passe" }, "collegue")).status, 403);
+  // Un administrateur de l'instance avec son code passe aussi (compte Grist propriétaire).
+  assert.equal((await account({ email: "mfa@example.org", password: "Mfa-2passe", mfaCode: "123456" })).status, 200);
+});
+
 test("le credential du portail est créé dans n8n au premier besoin, une seule fois", async (t) => {
   const p = await startPortal();
   t.after(p.close);

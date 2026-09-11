@@ -8,6 +8,13 @@ export const SECRET = "secret-du-portail";
 // Clés API acceptées par le faux n8n : celle du provisioning (fichier) et une
 // clé créée par le propriétaire dans l'interface de n8n.
 export const API_KEYS = new Set(["cle-api", "cle-du-proprietaire"]);
+// Comptes du faux n8n : le propriétaire, un simple membre, un compte à double
+// authentification (code 123456).
+export const ACCOUNTS = {
+  "proprietaire@example.org": { password: "Bon-Mot-2passe", role: "global:owner", isOwner: true },
+  "membre@example.org": { password: "Membre-2passe", role: "global:member", isOwner: false },
+  "mfa@example.org": { password: "Mfa-2passe", role: "global:admin", isOwner: false, mfa: "123456" },
+};
 
 export function jwt(payload) {
   const part = (obj) => Buffer.from(JSON.stringify(obj)).toString("base64url");
@@ -68,10 +75,30 @@ export function fakeN8n({
 } = {}) {
   const runs = [];
   const created = [];
+  const sessions = { opened: 0, closed: 0 };
   const fetchImpl = async (url, init = {}) => {
     const u = new URL(url);
     const method = init.method || "GET";
     const key = init.headers?.["x-n8n-api-key"];
+    if (u.pathname === "/rest/login") {
+      const { emailOrLdapLoginId, password, mfaCode } = JSON.parse(init.body);
+      const account = ACCOUNTS[emailOrLdapLoginId];
+      if (!account || account.password !== password) {
+        return Response.json({ code: 401, message: "Wrong username or password." }, { status: 401 });
+      }
+      if (account.mfa && mfaCode !== account.mfa) {
+        return Response.json({ code: 998, message: "MFA Authentication is required" }, { status: 401 });
+      }
+      sessions.opened += 1;
+      return Response.json(
+        { data: { email: emailOrLdapLoginId, role: account.role, isOwner: account.isOwner } },
+        { headers: { "set-cookie": "n8n-auth=session; Path=/; HttpOnly" } },
+      );
+    }
+    if (u.pathname === "/rest/logout") {
+      if (String(init.headers?.cookie || "").startsWith("n8n-auth=")) sessions.closed += 1;
+      return Response.json({ data: { loggedOut: true } });
+    }
     if (u.pathname.startsWith("/api/v1/") && !API_KEYS.has(key)) {
       return new Response('{"message":"unauthorized"}', { status: 401 });
     }
@@ -109,5 +136,5 @@ export function fakeN8n({
     }
     return new Response("{}", { status: 404 });
   };
-  return { fetchImpl, runs, credentials, created };
+  return { fetchImpl, runs, credentials, created, sessions };
 }
