@@ -106,7 +106,7 @@
   "journal": [
     {
       "version": "chart 1.0.1",
-      "texte": "Testé comme un utilisateur dans la console Onyxia : le bouton « Ouvrir » mène à l’éditeur, l’adresse MCP reste lisible dans la fenêtre du service, interface n8n homogène."
+      "texte": "Testé comme un utilisateur dans la console Onyxia : le bouton « Ouvrir le service » mène à l’éditeur, l’adresse MCP reste lisible dans la fenêtre du service."
     },
     {
       "version": "chart 1.0.0",
