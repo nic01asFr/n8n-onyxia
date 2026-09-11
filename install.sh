@@ -16,6 +16,9 @@
 #   RELEASE        : nom de la release Helm (défaut : n8n).
 #   CHART_VERSION  : version du chart (défaut : la plus récente).
 #   SKIP_MCP       : "true" pour installer n8n sans serveur MCP.
+#   MIGRATE        : "true" pour reprendre une release des charts 0.x (n8n 1.x) en
+#                    conservant ses données : sauvegarde, puis mise à jour en place.
+#   BACKUP_DIR     : dossier de la sauvegarde faite avant migration (défaut : dossier courant).
 #   HELM_REPO_URL  : surcharge de l'URL du dépôt Helm (tests).
 #   HELM_CONFIG_HOME / HELM_CACHE_HOME / HELM_DATA_HOME : répertoires Helm
 #     (défaut /tmp/helm/* : certains pods Jupyter ont /home/onyxia en lecture seule).
@@ -72,20 +75,41 @@ MCP_HOST="${NS}-${RELEASE}-mcp.${DOMAIN}"
 # --- 3. Release existante ----------------------------------------------------------
 EXISTING_CHART=$(helm list -n "$NS" --filter "^${RELEASE}\$" -o json 2>/dev/null \
   | sed -n 's/.*"chart":"\([^"]*\)".*/\1/p')
+SECRET_NAME="$RELEASE"
+[[ "$RELEASE" != *n8n* ]] && SECRET_NAME="${RELEASE}-n8n"
+
+MIGRATING=false
 if [[ "$EXISTING_CHART" == n8n-0.* ]]; then
-  die "La release '$RELEASE' utilise le chart $EXISTING_CHART (n8n 1.x).
-Le chart 1.0 passe à n8n 2.x et range ses données autrement : pas de mise à jour automatique.
-Pour installer à côté : RELEASE=n8n-v2 bash install.sh
-Pour migrer : sauvegarde d'abord /home/node/.n8n et la clé encryptionKey, puis suis
-https://nic01asfr.github.io/n8n-onyxia/#migration"
-fi
-if helm status n8n-mcp -n "$NS" >/dev/null 2>&1; then
+  # Les charts 0.x installaient n8n 1.x : passer en 2.x migre la base, sans
+  # retour possible autrement que par la sauvegarde. On ne le fait que sur demande.
+  [[ "${MIGRATE:-false}" == "true" ]] || die "La release '$RELEASE' utilise le chart $EXISTING_CHART (n8n 1.x).
+La mise à jour migre la base vers n8n 2.x, sans retour arrière autre qu'une sauvegarde.
+Pour migrer en conservant les données (sauvegarde faite d'abord) :
+  curl -sL https://nic01asfr.github.io/n8n-onyxia/install.sh | MIGRATE=true bash"
+  MIGRATING=true
+  log "Migration de la release '$RELEASE' ($EXISTING_CHART) vers le chart actuel"
+elif [[ -n "$EXISTING_CHART" ]] && helm status n8n-mcp -n "$NS" >/dev/null 2>&1; then
   warn "Une ancienne release 'n8n-mcp' existe : le serveur MCP fait désormais partie du chart n8n."
-  warn "Une fois la nouvelle installation vérifiée : helm uninstall n8n-mcp -n $NS"
+  warn "Pour la retirer : helm uninstall n8n-mcp -n $NS"
 fi
 
 # --- 4. Email et mot de passe owner ------------------------------------------------
+# Lecture d'une clé du Secret de la release, sous son nom actuel ou sous celui
+# des charts 0.x.
+secret_value() {
+  local key
+  for key in "$@"; do
+    local value
+    value=$(kubectl get secret "$SECRET_NAME" -n "$NS" -o jsonpath="{.data.$key}" 2>/dev/null | base64 -d 2>/dev/null || true)
+    [[ -n "$value" ]] && { printf '%s' "$value"; return 0; }
+  done
+  return 0
+}
+
 if [[ -z "${OWNER_EMAIL:-}" ]]; then
+  OWNER_EMAIL=$(secret_value OWNER_EMAIL ownerEmail)
+fi
+if [[ -z "$OWNER_EMAIL" ]]; then
   OWNER_EMAIL=$(git config --global user.email 2>/dev/null || echo "")
 fi
 if [[ -z "$OWNER_EMAIL" ]] && [[ -r /dev/tty ]]; then
@@ -95,13 +119,10 @@ fi
 [[ -z "$OWNER_EMAIL" ]] && die "OWNER_EMAIL requis. Définir la variable ou git config --global user.email."
 ok "Compte owner : $OWNER_EMAIL"
 
-SECRET_NAME="$RELEASE"
-[[ "$RELEASE" != *n8n* ]] && SECRET_NAME="${RELEASE}-n8n"
-
-# Mise à jour : on repasse le mot de passe déjà en place, pour que les notes
-# continuent de l'afficher. Premier déploiement : mot de passe conforme à la
-# politique n8n (majuscule et chiffre), comme le ferait Onyxia.
-OWNER_PASSWORD=$(kubectl get secret "$SECRET_NAME" -n "$NS" -o jsonpath='{.data.OWNER_PASSWORD}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+# Mise à jour ou migration : on repasse le mot de passe déjà en place, pour que
+# les notes continuent de l'afficher. Premier déploiement : mot de passe conforme
+# à la politique n8n (majuscule et chiffre), comme le ferait Onyxia.
+OWNER_PASSWORD=$(secret_value OWNER_PASSWORD ownerPassword)
 if [[ -z "$OWNER_PASSWORD" ]]; then
   # « || true » : head ferme le tube, tr reçoit SIGPIPE, et pipefail l'aurait
   # transformé en échec du script.
@@ -127,6 +148,67 @@ HELM_ARGS=(
 )
 [[ "${SKIP_MCP:-false}" == "true" ]] && HELM_ARGS+=(--set "mcp.enabled=false")
 [[ -n "${CHART_VERSION:-}" ]] && HELM_ARGS+=(--version "$CHART_VERSION")
+
+if [[ "$MIGRATING" == "true" ]]; then
+  # --- Migration depuis un chart 0.x -------------------------------------------
+  # Volume : Kubernetes refuse de réduire un volume ou d'en changer la classe, on
+  # reprend donc taille et classe existantes.
+  PVC_SIZE=$(kubectl get pvc "$SECRET_NAME" -n "$NS" -o jsonpath='{.spec.resources.requests.storage}')
+  PVC_CLASS=$(kubectl get pvc "$SECRET_NAME" -n "$NS" -o jsonpath='{.spec.storageClassName}')
+  [[ -n "$PVC_SIZE" ]] || die "Volume '$SECRET_NAME' introuvable : migration impossible sans les données."
+  HELM_ARGS+=(--set "persistence.size=$PVC_SIZE")
+  [[ -n "$PVC_CLASS" ]] && HELM_ARGS+=(--set "persistence.storageClass=$PVC_CLASS")
+
+  # Données : les charts 0.x les rangeaient dans « .n8n/.n8n » du volume.
+  if kubectl exec -n "$NS" "deploy/$SECRET_NAME" -- test -f /home/node/.n8n/.n8n/database.sqlite 2>/dev/null; then
+    HELM_ARGS+=(--set "n8n.userFolder=/home/node/.n8n")
+  fi
+
+  # Sauvegarde avant toute modification : volume complet et clé de chiffrement.
+  BACKUP_DIR="${BACKUP_DIR:-$PWD}"
+  STAMP=$(date +%Y%m%d-%H%M%S)
+  BACKUP_FILE="$BACKUP_DIR/n8n-backup-$STAMP.tar.gz"
+  KEY_FILE="$BACKUP_DIR/n8n-encryption-key-$STAMP.txt"
+  log "Sauvegarde du volume dans $BACKUP_FILE ..."
+  kubectl exec -n "$NS" "deploy/$SECRET_NAME" -- tar czf - -C /home/node/.n8n . > "$BACKUP_FILE"
+  gzip -t "$BACKUP_FILE" || die "Sauvegarde illisible : migration annulée, rien n'a été modifié."
+  (umask 077 && secret_value N8N_ENCRYPTION_KEY encryptionKey > "$KEY_FILE")
+  [[ -s "$KEY_FILE" ]] || die "Clé de chiffrement introuvable : migration annulée, rien n'a été modifié."
+  ok "Sauvegarde faite ($(du -h "$BACKUP_FILE" | cut -f1)), clé dans $KEY_FILE"
+
+  # Étape intermédiaire : n8n ne migre sa base vers 2.x que depuis la dernière
+  # 1.x. Éprouvé : un saut direct de 1.80 à 2.38 vide la table shared_workflow,
+  # et les workflows perdent leur propriétaire (invisibles, webhooks muets). La
+  # release 0.x passe donc d'abord sur la dernière 1.x, avec sa configuration.
+  BRIDGE_IMAGE="${N8N_BRIDGE_IMAGE:-docker.n8n.io/n8nio/n8n:1.123.79}"
+  CURRENT_TAG=$(kubectl get "deploy/$SECRET_NAME" -n "$NS" -o jsonpath='{.spec.template.spec.containers[?(@.name=="n8n")].image}' | sed 's/.*://')
+  if [[ "$CURRENT_TAG" == 1.* ]] && [[ "$(printf '%s\n' "$CURRENT_TAG" "${BRIDGE_IMAGE##*:}" | sort -V | head -1)" == "$CURRENT_TAG" ]] && [[ "$CURRENT_TAG" != "${BRIDGE_IMAGE##*:}" ]]; then
+    log "Étape 1/2 : migration de la base avec n8n ${BRIDGE_IMAGE##*:} (depuis $CURRENT_TAG)..."
+    # Par Helm plutôt que « kubectl set image » : Helm 4 applique côté serveur et
+    # refuserait ensuite de reprendre un champ modifié par un autre gestionnaire.
+    helm upgrade "$RELEASE" n8n-onyxia/n8n --namespace "$NS" --version "${EXISTING_CHART#n8n-}" \
+      --reuse-values --set "image.repository=${BRIDGE_IMAGE%:*}" --set "image.tag=${BRIDGE_IMAGE##*:}" \
+      --wait --timeout 15m >/dev/null \
+      || die "n8n ${BRIDGE_IMAGE##*:} ne démarre pas. Données intactes dans $BACKUP_FILE ; journal : kubectl logs deploy/$SECRET_NAME -n $NS"
+    ok "Base migrée en n8n ${BRIDGE_IMAGE##*:}"
+    log "Étape 2/2 : passage au chart actuel"
+  fi
+
+  # Hôtes : le serveur MCP intégré reprend l'hôte de l'ancienne release n8n-mcp,
+  # et l'Ingress de l'éditeur change de nom. Deux Ingress sur le même hôte
+  # peuvent être refusés par le contrôleur : on libère les hôtes avant.
+  if helm status n8n-mcp -n "$NS" >/dev/null 2>&1; then
+    helm uninstall n8n-mcp -n "$NS" >/dev/null && ok "Ancienne release n8n-mcp retirée"
+    kubectl delete secret n8n-mcp -n "$NS" --ignore-not-found >/dev/null
+  fi
+  kubectl delete ingress "$SECRET_NAME" -n "$NS" --ignore-not-found >/dev/null
+elif [[ -n "$EXISTING_CHART" ]]; then
+  # Mise à jour d'une release du chart actuel : on repart des valeurs par défaut
+  # du nouveau chart en reprenant celles déjà posées (chemin des données, taille
+  # du volume...). Sans cela, une relance remettrait n8n.userFolder à son défaut
+  # et n8n repartirait sur une base vide.
+  HELM_ARGS+=(--reset-then-reuse-values)
+fi
 
 log "Déploiement de n8n sur https://$N8N_HOST ..."
 helm upgrade --install "$RELEASE" n8n-onyxia/n8n "${HELM_ARGS[@]}" --wait --timeout 10m >/dev/null
