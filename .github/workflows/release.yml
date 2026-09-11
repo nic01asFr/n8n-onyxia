@@ -97,7 +97,8 @@ jobs:
           helm template t charts/n8n $HOSTS --set portal.enabled=true --set portal.hostname=portail.example.org > /tmp/portal.yaml
           grep -q 'server.mjs:' /tmp/portal.yaml
           grep -q 'PORTAL_ADMIN_TOKEN' /tmp/portal.yaml
-          grep -q 'command: \["node", "/portal/server.mjs"\]' /tmp/portal.yaml
+          grep -q 'command: \["node", "/portal/start.mjs"\]' /tmp/portal.yaml
+          grep -q 'start.mjs:' /tmp/portal.yaml
           grep -q 'host: "portail.example.org"' /tmp/portal.yaml
           if helm template t charts/n8n $HOSTS --set portal.enabled=true > /dev/null 2>&1; then
             echo "le rendu du portail sans hôte aurait dû échouer"; exit 1

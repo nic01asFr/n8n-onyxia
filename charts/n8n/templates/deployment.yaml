@@ -307,7 +307,7 @@ spec:
         - name: portal
           image: "{{ .Values.service.image.repository }}:{{ .Values.service.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.service.image.pullPolicy }}
-          command: ["node", "/portal/server.mjs"]
+          command: ["node", "/portal/start.mjs"]
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           ports:

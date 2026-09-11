@@ -16,7 +16,7 @@ import { createServer } from "node:http";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 import { IdentityError, createIdentityVerifier } from "./identity.mjs";
 import { openStore, isActionKey } from "./store.mjs";
@@ -370,7 +370,10 @@ export function configFromEnv(env = process.env) {
   };
 }
 
-async function main() {
+// Démarré par start.mjs. Pas de garde « ce fichier est-il le programme
+// principal ? » : dans une ConfigMap, /portal/server.mjs est un lien
+// symbolique, Node compare son chemin réel, et le serveur ne démarrait jamais.
+export async function main() {
   const config = configFromEnv();
   if (!config.adminToken) log("ATTENTION : PORTAL_ADMIN_TOKEN vide, l'administration est désactivée");
   const store = await openStore(config.storeFile);
@@ -380,11 +383,9 @@ async function main() {
     verifyIdentity: createIdentityVerifier({ allowedOrigins: config.gristOrigins }),
     n8n: createN8nClient({ baseUrl: config.n8nUrl, apiKeyFile: config.apiKeyFile, runTimeoutMs: config.runTimeoutMs }),
   });
-  createServer(handle).listen(config.port, () => {
-    log(`à l'écoute sur le port ${config.port}, Grist autorisé : ${config.gristOrigins.join(", ")}`);
+  const server = createServer(handle);
+  server.listen(config.port, () => {
+    log(`à l'écoute sur le port ${server.address().port}, Grist autorisé : ${config.gristOrigins.join(", ")}`);
   });
-}
-
-if (import.meta.url === pathToFileURL(process.argv[1] || "").href) {
-  await main();
+  return server;
 }
