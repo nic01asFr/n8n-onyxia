@@ -34,6 +34,20 @@ test("inputNamesFromWorkflow repère les champs lus dans le corps", () => {
   assert.deepEqual(inputNamesFromWorkflow(wf).sort(), ["consigne", "document", "url"]);
 });
 
+// Cas réel : le workflow de démonstration de n8n-v2 ne donnait aucun champ.
+test("inputNamesFromWorkflow lit aussi les nœuds Code qui rangent le corps dans une variable", () => {
+  const code = [
+    "const body = $input.first().json.body || {};",
+    "const texte = String(body.texte || '');",
+    "const ctx = body._portail || {};",
+    "const c = body['consigne'];",
+    "const { langue, niveau: n = 1 } = $json.body;",
+    "const autre = {}; autre.pasunchamp = 1;",
+  ].join("\n");
+  const wf = { nodes: [{ name: "Code", parameters: { jsCode: code } }] };
+  assert.deepEqual(inputNamesFromWorkflow(wf).sort(), ["consigne", "langue", "niveau", "texte"]);
+});
+
 test("runWebhook envoie les entrées à plat et le contexte sous _portail", async () => {
   const dir = mkdtempSync(join(tmpdir(), "portail-"));
   writeFileSync(join(dir, "key"), "cle-api\n");

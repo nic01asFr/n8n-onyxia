@@ -82,7 +82,36 @@ export function inputNamesFromWorkflow(workflow) {
       if (match[1] !== CONTEXT_KEY) names.add(match[1]);
     }
   }
+  // Nœuds Code : le corps est souvent rangé dans une variable
+  // (const body = $input.first().json.body) puis lu champ par champ, ou
+  // déstructuré (const { texte } = $json.body).
+  for (const node of nodes) {
+    const code = node.parameters?.jsCode;
+    if (typeof code !== "string") continue;
+    for (const name of inputNamesFromCode(code)) if (name !== CONTEXT_KEY) names.add(name);
+  }
   return [...names];
+}
+
+const BODY_SOURCE = String.raw`(?:\$json|\$input\.(?:first|last|item|all)\(\)(?:\[\d+\])?\.json|\$\([^)]*\)\.(?:first|last|item)\(?\)?\.json|items\[\d+\]\.json)\.body`;
+
+function inputNamesFromCode(code) {
+  const names = new Set();
+  const variable = new RegExp(String.raw`(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*${BODY_SOURCE}\b(?:\s*\|\|\s*\{\})?`, "g");
+  for (const [, v] of code.matchAll(variable)) {
+    const escaped = v.replace(/\$/g, "\\$");
+    const dotted = new RegExp(String.raw`(?<![\w$.])${escaped}\.([A-Za-z_][A-Za-z0-9_]*)`, "g");
+    const bracketed = new RegExp(String.raw`(?<![\w$.])${escaped}\[\s*["']([A-Za-z_][A-Za-z0-9_]*)["']\s*\]`, "g");
+    for (const re of [dotted, bracketed]) for (const m of code.matchAll(re)) names.add(m[1]);
+  }
+  const destructured = new RegExp(String.raw`(?:const|let|var)\s*\{([^}]*)\}\s*=\s*${BODY_SOURCE}\b`, "g");
+  for (const [, list] of code.matchAll(destructured)) {
+    for (const part of list.split(",")) {
+      const name = part.split(/[:=]/)[0].trim();
+      if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) names.add(name);
+    }
+  }
+  return names;
 }
 
 export function createN8nClient({ baseUrl, apiKeyFile, fetchImpl = fetch, runTimeoutMs = 120000 }) {
