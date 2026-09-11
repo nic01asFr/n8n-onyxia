@@ -31,6 +31,11 @@ const API_KEY_SCOPE_PREFIXES = env("API_KEY_SCOPE_PREFIXES")
   .map((prefix) => prefix.trim())
   .filter(Boolean);
 const READY_TIMEOUT_S = Number(env("READY_TIMEOUT_SECONDS", "600"));
+// Clé créée par les charts 0.x (Secret, clé N8N_API_KEY). n8n n'autorise parfois
+// qu'une clé par utilisateur : la reprendre évite de buter sur cette limite.
+const LEGACY_API_KEY = env("LEGACY_API_KEY");
+// Libellés des clés que ce chart a pu créer, et qu'il peut donc remplacer.
+const OWN_KEY_LABELS = [API_KEY_LABEL, "auto-provisioned"];
 
 // n8n lie le cookie de session à l'en-tête browser-id présenté à la connexion :
 // il faut renvoyer le même à chaque appel.
@@ -134,7 +139,20 @@ async function selectScopes(cookie) {
   );
 }
 
-async function createApiKey(cookie) {
+async function removeOwnKeys(cookie) {
+  // Seules les clés portant un libellé de ce chart sont retirées : celles que
+  // l'utilisateur a créées lui-même restent intactes.
+  const response = await request("GET", "/rest/api-keys", { cookie });
+  const keys = Array.isArray(response.json?.data) ? response.json.data : [];
+  let removed = 0;
+  for (const key of keys.filter((k) => OWN_KEY_LABELS.includes(k.label))) {
+    const deletion = await request("DELETE", `/rest/api-keys/${key.id}`, { cookie });
+    if (deletion.status === 200) removed += 1;
+  }
+  return removed;
+}
+
+async function createApiKey(cookie, { retried = false } = {}) {
   const scopes = await selectScopes(cookie);
   if (scopes.length === 0) {
     log("aucun scope disponible pour la clé API, vérifiez API_KEY_SCOPE_PREFIXES");
@@ -144,6 +162,11 @@ async function createApiKey(cookie) {
     cookie,
     body: { label: API_KEY_LABEL, expiresAt: null, scopes },
   });
+  if (!retried && response.status === 400 && /maximum number of API keys/i.test(response.text)) {
+    const removed = await removeOwnKeys(cookie);
+    log(`limite de clés API atteinte : ${removed} ancienne(s) clé(s) de ce chart retirée(s)`);
+    if (removed > 0) return createApiKey(cookie, { retried: true });
+  }
   const data = response.json?.data ?? response.json ?? {};
   const rawKey = data.rawApiKey ?? data.apiKey;
   if (response.status !== 200 || !rawKey) {
@@ -172,8 +195,14 @@ async function ensureApiKey() {
     }
     log("clé API existante refusée par n8n, création d'une nouvelle");
   } catch {
-    log("aucune clé API sur le volume, création");
+    log("aucune clé API sur le volume");
   }
+  if (LEGACY_API_KEY && (await isKeyValid(LEGACY_API_KEY))) {
+    await writeKeyFile(LEGACY_API_KEY);
+    log("clé API de l'installation précédente reprise pour le serveur MCP");
+    return true;
+  }
+  log("création d'une clé API");
   const cookie = await login();
   if (!cookie) {
     log("impossible de se connecter avec le mot de passe du chart.");

@@ -62,7 +62,19 @@ claude mcp add n8n --transport http https://user-IDEP-n8n-mcp.user.lab.sspcloud.
 
 ## Migrer depuis les charts 0.x
 
-Les charts 0.x (n8n 1.x, chart `n8n-mcp` séparé) rangeaient les données dans `.n8n/.n8n` du volume et la clé sous `encryptionKey`. `install.sh` refuse de les mettre à jour. La procédure, éprouvée sur un cluster de test avec un credential créé en 0.2.0 puis relu en clair après migration, est décrite sur la [vitrine](https://nic01asfr.github.io/n8n-onyxia/#migration). Sauvegarder le volume et la clé avant.
+```bash
+curl -sL https://nic01asfr.github.io/n8n-onyxia/install.sh | MIGRATE=true bash
+```
+
+Sans `MIGRATE=true`, `install.sh` refuse de toucher une release 0.x (n8n 1.x). Avec, il :
+
+1. sauvegarde le volume et la clé de chiffrement dans le dossier courant (`BACKUP_DIR` pour un autre) ;
+2. passe l'ancienne release sur la dernière n8n 1.x (1.123.79) : un saut direct de 1.80 à 2.x vide la table `shared_workflow` et les workflows perdent leur propriétaire (constaté en test) ;
+3. retire la release `n8n-mcp` et l'ancien Ingress, dont le chart actuel reprend les hôtes ;
+4. met à jour vers le chart actuel en gardant taille et classe du volume, chemin des données (`.n8n/.n8n`), clé de chiffrement, compte owner et ancienne clé API ;
+5. enregistre le service dans « Mes services ».
+
+Éprouvé sur un cluster de test reproduisant une instance 0.2.0 réelle (volume 10Gi avec classe, clé API legacy, workflow webhook actif, release `n8n-mcp`) : workflows rattachés, webhook actif, credential relu en clair, MCP fonctionnel, puis relance ordinaire sans perte. Le jeton MCP change : mettre à jour la configuration des assistants.
 
 ## Limites
 

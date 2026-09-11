@@ -105,6 +105,10 @@
   },
   "journal": [
     {
+      "version": "chart 1.0.2",
+      "texte": "Migration des instances 0.x en une commande (MIGRATE=true) : sauvegarde, passage par la dernière n8n 1.x pour garder le propriétaire des workflows, reprise du volume, des hôtes et de l’ancienne clé API."
+    },
+    {
       "version": "chart 1.0.1",
       "texte": "Testé comme un utilisateur dans la console Onyxia : le bouton « Ouvrir le service » mène à l’éditeur, l’adresse MCP reste lisible dans la fenêtre du service."
     },

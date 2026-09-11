@@ -199,6 +199,12 @@ spec:
               value: {{ .Values.provisioning.apiKeyScopePrefixes | quote }}
             - name: API_KEY_FILE
               value: "/home/node/.n8n/{{ $apiKeyRelPath }}"
+            - name: LEGACY_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: LEGACY_N8N_API_KEY
+                  optional: true
           resources:
             {{- toYaml .Values.provisioning.resources | nindent 12 }}
           volumeMounts:

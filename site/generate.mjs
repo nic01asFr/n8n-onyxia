@@ -190,25 +190,14 @@ function blocStack(stack) {
 function blocMigration() {
   return `<section id="migration">
     <h2><span class="sec-label">Migration</span> Depuis les charts 0.x</h2>
-    <p class="lead">Les charts 0.x installaient n8n 1.x et un chart n8n-mcp séparé. Le passage à n8n 2.x migre la base : le script d'installation refuse donc de mettre à jour une release 0.x sans toi.</p>
+    <p class="lead">Les charts 0.x installaient n8n 1.x et un chart n8n-mcp séparé. Une seule commande reprend ton instance, avec ses workflows, credentials, webhooks et URL, et la passe sur le chart actuel. Le script refuse de le faire sans que tu le demandes.</p>
+    ${code(`curl -sL ${PAGES_URL}/install.sh | MIGRATE=true bash`)}
     <ol class="steps">
-      <li><span class="n">1</span><div><b>Sauvegarde</b><p>Exporte le volume et la clé de chiffrement.</p></div></li>
-      <li><span class="n">2</span><div><b>Mise à jour en conservant les données</b><p>Les charts 0.x rangeaient les données dans « .n8n/.n8n » : garde ce chemin et la clé existante.</p></div></li>
-      <li><span class="n">3</span><div><b>Nettoyage</b><p>Une fois n8n vérifié, supprime l'ancienne release n8n-mcp.</p></div></li>
+      <li><span class="n">1</span><div><b>Sauvegarde</b><p>Archive du volume et clé de chiffrement, dans le dossier courant de ton Jupyter, avant toute modification.</p></div></li>
+      <li><span class="n">2</span><div><b>Passage par la dernière n8n 1.x</b><p>n8n ne migre sa base vers 2.x que depuis la dernière 1.x : un saut direct fait perdre aux workflows leur propriétaire. Le script fait donc l'étape intermédiaire.</p></div></li>
+      <li><span class="n">3</span><div><b>Passage au chart actuel</b><p>Même volume, même taille, mêmes hôtes. L'ancienne release n8n-mcp est retirée : le serveur MCP intégré reprend son adresse, avec un nouveau jeton affiché dans les notes.</p></div></li>
+      <li><span class="n">4</span><div><b>Enregistrement dans Onyxia</b><p>Le service apparaît dans « Mes services », avec ses notes et ses boutons.</p></div></li>
     </ol>
-    ${code(`kubectl exec deploy/n8n -- tar czf - -C /home/node/.n8n . > n8n-backup.tar.gz
-kubectl get secret n8n -o jsonpath='{.data.encryptionKey}' | base64 -d > n8n-encryption-key.txt
-
-helm upgrade n8n n8n-onyxia/n8n \\
-  --set n8n.userFolder=/home/node/.n8n \\
-  --set n8n.encryptionKey="$(cat n8n-encryption-key.txt)" \\
-  --set ingress.hostname=user-IDEP-n8n.user.lab.sspcloud.fr \\
-  --set mcp.hostname=user-IDEP-n8n-mcp.user.lab.sspcloud.fr \\
-  --set ingress.ingressClassName=onyxia \\
-  --set security.email=toi@exemple.fr \\
-  --set persistence.keepOnUninstall=true
-
-helm uninstall n8n-mcp`)}
   </section>`;
 }
 
