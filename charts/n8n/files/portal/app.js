@@ -314,11 +314,17 @@
 
   // ── Configurer ───────────────────────────────────────────────────────────
 
-  // Connexion à n8n, comme le serveur MCP y est connecté : avec le compte du
-  // service (email et mot de passe des notes Onyxia), ou une clé API. n8n
-  // vérifie lui-même ; le portail n'en garde qu'une session d'une heure.
+  // Connexion à n8n : avec le jeton du serveur MCP (notes Onyxia, déjà collé
+  // dans l'assistant), le compte du service, ou une clé API. Le portail n'en
+  // garde qu'une session d'une heure.
+  var LOGIN_LABELS = { mcp: 'le jeton MCP', compte: 'le compte n8n', cle: 'une clé API' };
+
+  function loginMethods() {
+    return (state.catalog && state.catalog.loginMethods) || ['compte', 'cle'];
+  }
+
   function renderAdminLogin(message, mode) {
-    mode = mode || 'compte';
+    mode = mode || loginMethods()[0];
     var pending = false;
     var fields = mode === 'compte'
       ? {
@@ -326,14 +332,16 @@
           password: h('input', { class: 'fr-input', type: 'password', id: 'n8n-mdp', autocomplete: 'current-password' }),
           mfaCode: h('input', { class: 'fr-input', type: 'text', id: 'n8n-mfa', inputmode: 'numeric', autocomplete: 'one-time-code' })
         }
-      : { apiKey: h('input', { class: 'fr-input', type: 'password', id: 'cle-n8n', autocomplete: 'off' }) };
+      : mode === 'mcp'
+        ? { mcpToken: h('input', { class: 'fr-input', type: 'password', id: 'jeton-mcp', autocomplete: 'off' }) }
+        : { apiKey: h('input', { class: 'fr-input', type: 'password', id: 'cle-n8n', autocomplete: 'off' }) };
 
     function submit() {
       var body = {};
       Object.keys(fields).forEach(function (k) { if (fields[k].value.trim()) body[k] = fields[k].value.trim(); });
-      if (pending || (mode === 'compte' ? !(body.email && body.password) : !body.apiKey)) return;
+      var complete = mode === 'compte' ? body.email && body.password : mode === 'mcp' ? body.mcpToken : body.apiKey;
+      if (pending || !complete) return;
       pending = true;
-      if (mode === 'compte') body.email = body.email || '';
       api('POST', 'api/admin/login', body).then(function (r) {
         Object.keys(fields).forEach(function (k) { fields[k].value = ''; });
         state.session = r.session;
@@ -362,7 +370,9 @@
           group('n8n-mdp', 'Mot de passe n8n', 'bouton « Copier le mot de passe » du service sur Onyxia.', fields.password),
           group('n8n-mfa', 'Code de double authentification', 'seulement si elle est activée sur ce compte.', fields.mfaCode)
         ]
-      : [group('cle-n8n', 'Clé API de votre n8n', 'dans n8n : Settings → n8n API → Create an API key.', fields.apiKey)];
+      : mode === 'mcp'
+        ? [group('jeton-mcp', 'Jeton du serveur MCP', 'dans les notes du service n8n sur Onyxia, celui que vous avez donné à votre assistant.', fields.mcpToken)]
+        : [group('cle-n8n', 'Clé API de votre n8n', 'dans n8n : Settings → n8n API → Create an API key.', fields.apiKey)];
 
     show(
       h('nav', { class: 'portail__retour' }, [button('← Actions', renderHome, 'tertiary-no-outline')]),
@@ -374,13 +384,12 @@
     if (state.catalog && !state.catalog.paired) {
       root.appendChild(h('p', { class: 'fr-text--sm', text: 'Première connexion : votre compte Grist deviendra le propriétaire de ce portail.' }));
     }
-    root.appendChild(h('div', { class: 'fr-btns-group' }, [
-      button('Se connecter', submit),
-      button(mode === 'compte' ? 'Utiliser une clé API à la place' : 'Utiliser le compte n8n à la place', function () {
-        renderAdminLogin('', mode === 'compte' ? 'cle' : 'compte');
-      }, 'tertiary-no-outline')
-    ]));
-    (fields.email || fields.apiKey).focus();
+    root.appendChild(h('div', { class: 'fr-btns-group' }, [button('Se connecter', submit)].concat(
+      loginMethods().filter(function (m) { return m !== mode; }).map(function (m) {
+        return button('Utiliser ' + LOGIN_LABELS[m] + ' à la place', function () { renderAdminLogin('', m); }, 'tertiary-no-outline');
+      })
+    )));
+    (fields.mcpToken || fields.email || fields.apiKey).focus();
   }
 
   function renderConfig() {

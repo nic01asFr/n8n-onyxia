@@ -11,8 +11,8 @@
 //   destinataire : tout lecteur d'un document auquel le propriétaire a ouvert
 //                  des actions (compte Grist connecté, sauf choix contraire) ;
 //   propriétaire : le compte Grist associé au portail, connecté au mode
-//                  « Configurer » avec le compte de ce n8n (ou une clé API),
-//                  vérifié par n8n et échangé contre une session courte.
+//                  « Configurer » avec le jeton du serveur MCP, le compte de
+//                  ce n8n ou une clé API, échangé contre une session courte.
 //
 // Pour tout le reste (lister les workflows, créer son credential, lancer les
 // webhooks), le portail est connecté à n8n comme le serveur MCP : par la clé
@@ -90,6 +90,12 @@ async function readJson(req) {
   } catch {
     throw new HttpError(400, "Corps JSON illisible.");
   }
+}
+
+function sameSecret(given, expected) {
+  const a = Buffer.from(String(given || ""));
+  const b = Buffer.from(String(expected || ""));
+  return a.length === b.length && a.length > 0 && timingSafeEqual(a, b);
 }
 
 // Session du mode « Configurer » : signée, courte, liée au compte Grist qui l'a
@@ -234,6 +240,7 @@ export function createPortal({ config, store, verifyIdentity, n8n, now = Date.no
         document: { docId: identity.docId },
         isOwner: store.isOwner(identity),
         paired: Boolean(store.owner()),
+        loginMethods: [...(config.mcpToken ? ["mcp"] : []), "compte", "cle"],
         anonymous: identity.anonymous,
         signInRequired,
         actions,
@@ -319,7 +326,10 @@ export function createPortal({ config, store, verifyIdentity, n8n, now = Date.no
         throw new HttpError(403, "Connectez-vous à Grist avant de configurer le portail.");
       }
       const body = await readJson(req);
-      if (body.email !== undefined) {
+      if (body.mcpToken !== undefined) {
+        if (!config.mcpToken) throw new HttpError(401, "Connexion par jeton MCP indisponible : le serveur MCP n'est pas activé.");
+        if (!sameSecret(body.mcpToken, config.mcpToken)) throw new HttpError(401, "Jeton MCP refusé.");
+      } else if (body.email !== undefined) {
         const account = await n8n.checkAccount({ email: body.email, password: body.password, mfaCode: body.mfaCode });
         if (!account.ok) throw new HttpError(401, "Email ou mot de passe n8n refusé par ce n8n.");
         if (!account.admin) throw new HttpError(403, "Ce compte n8n n'est ni propriétaire ni administrateur de l'instance.");
@@ -480,6 +490,8 @@ export function configFromEnv(env = process.env) {
     apiKeyFile: env.API_KEY_FILE || "/home/node/.n8n/onyxia/n8n-api-key",
     storeFile: env.PORTAL_STORE_FILE || "/home/node/.n8n/onyxia/portail.json",
     webhookSecret: env.PORTAL_WEBHOOK_SECRET || "",
+    // Jeton du serveur MCP (notes Onyxia) : l'une des preuves qu'on tient ce n8n.
+    mcpToken: env.PORTAL_MCP_TOKEN || "",
     gristOrigins: list(env.PORTAL_GRIST_ORIGINS || "https://grist.numerique.gouv.fr,https://docs.getgrist.com"),
     pluginUrl: env.PORTAL_GRIST_PLUGIN_URL || "https://grist.numerique.gouv.fr/grist-plugin-api.js",
     runTimeoutMs: Number(env.PORTAL_RUN_TIMEOUT_MS || 120000),

@@ -14,7 +14,9 @@ const OWNER = 10;
 const COLLEGUE = 20;
 const OWNER_KEY = "cle-du-proprietaire";
 
-async function startPortal({ n8n = fakeN8n() } = {}) {
+const MCP_TOKEN = "jeton-du-serveur-mcp";
+
+async function startPortal({ n8n = fakeN8n(), mcpToken = MCP_TOKEN } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "portail-"));
   writeFileSync(join(dir, "key"), "cle-api");
   const tokens = {
@@ -28,7 +30,7 @@ async function startPortal({ n8n = fakeN8n() } = {}) {
     anon: tokenFor(ANON),
   };
   const grist = fakeGrist(new Set(Object.values(tokens)));
-  const config = { ...configFromEnv({}), webhookSecret: SECRET, gristOrigins: [GRIST], storeFile: join(dir, "portail.json") };
+  const config = { ...configFromEnv({}), webhookSecret: SECRET, mcpToken, gristOrigins: [GRIST], storeFile: join(dir, "portail.json") };
   const store = await openStore(config.storeFile);
   const handle = createPortal({
     config,
@@ -113,6 +115,27 @@ test("le mode Configurer s'ouvre aussi avec le compte n8n du service", async (t)
   assert.equal((await account({ email: "proprietaire@example.org", password: "Bon-Mot-2passe" }, "collegue")).status, 403);
   // Un administrateur de l'instance avec son code passe aussi (compte Grist propriétaire).
   assert.equal((await account({ email: "mfa@example.org", password: "Mfa-2passe", mfaCode: "123456" })).status, 200);
+});
+
+test("le jeton du serveur MCP ouvre aussi le mode Configurer, et c'est le moyen proposé en premier", async (t) => {
+  const p = await startPortal();
+  t.after(p.close);
+  assert.deepEqual((await p.call("GET", "/api/catalog")).json.loginMethods, ["mcp", "compte", "cle"]);
+  assert.equal((await p.call("POST", "/api/admin/login", { body: { mcpToken: "faux" } })).status, 401);
+  assert.equal((await p.call("POST", "/api/admin/login", { as: "anon", body: { mcpToken: MCP_TOKEN } })).status, 403);
+  const ok = await p.call("POST", "/api/admin/login", { body: { mcpToken: MCP_TOKEN } });
+  assert.equal(ok.status, 200);
+  assert.equal((await p.call("GET", "/api/admin/state", { session: ok.json.session })).status, 200);
+  assert.equal((await p.call("POST", "/api/admin/login", { as: "collegue", body: { mcpToken: MCP_TOKEN } })).status, 403);
+});
+
+test("sans serveur MCP, le jeton MCP n'est ni proposé ni accepté", async (t) => {
+  const p = await startPortal({ mcpToken: "" });
+  t.after(p.close);
+  assert.deepEqual((await p.call("GET", "/api/catalog")).json.loginMethods, ["compte", "cle"]);
+  const refused = await p.call("POST", "/api/admin/login", { body: { mcpToken: "" } });
+  assert.equal(refused.status, 401);
+  assert.match(refused.json.error, /MCP n'est pas activé/);
 });
 
 test("le credential du portail est créé dans n8n au premier besoin, une seule fois", async (t) => {

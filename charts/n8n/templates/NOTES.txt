@@ -68,9 +68,9 @@ https://{{ .Values.portal.hostname }}/
 ```
 
 Pour choisir les workflows exposés : dans le widget, connecté à Grist,
-cliquez sur « Configurer » et connectez-vous avec le compte n8n ci-dessus (ou
-une clé API). Le premier compte Grist qui s'y connecte devient propriétaire du
-portail.
+cliquez sur « Configurer » et collez {{ if .Values.mcp.enabled }}le jeton MCP ci-dessus (ou utilisez le
+compte n8n, ou une clé API){{ else }}l'email et le mot de passe n8n ci-dessus (ou une clé API){{ end }}. Le premier compte Grist qui
+s'y connecte devient propriétaire du portail.
 
 Un workflow devient une action par son déclencheur Webhook : méthode POST,
 workflow publié, authentification Header Auth avec le credential « Portail
@@ -145,8 +145,9 @@ https://{{ .Values.portal.hostname }}/
 ```
 
 To choose the exposed workflows: in the widget, signed in to Grist, click
-"Configurer" and sign in with the n8n account above (or an API key). The first
-Grist account to sign in there becomes the portal owner.
+"Configurer" and paste {{ if .Values.mcp.enabled }}the MCP token above (or use the n8n account, or an
+API key){{ else }}the n8n email and password above (or an API key){{ end }}. The first Grist account to sign in
+there becomes the portal owner.
 
 A workflow becomes an action through its Webhook trigger: POST, published, and
 Header Auth with the "Portail d'actions (en-tête)" credential, created

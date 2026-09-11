@@ -336,6 +336,14 @@ spec:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: PORTAL_WEBHOOK_SECRET
+            {{- if .Values.mcp.enabled }}
+            # Le jeton du MCP, affiché dans les notes, ouvre aussi « Configurer ».
+            - name: PORTAL_MCP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: MCP_AUTH_TOKEN
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz
