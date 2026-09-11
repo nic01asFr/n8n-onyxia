@@ -27,11 +27,15 @@ jobs:
 
       - uses: azure/setup-helm@v4
         with:
-          version: v3.17.3
+          version: v3.21.4
 
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+
+      # Helm 3 joint le cluster même en --dry-run=client : un kind éphémère
+      # permet de rendre les notes comme lors d'une vraie installation.
+      - uses: helm/kind-action@v1
 
       - name: Dependencies
         run: helm dependency update charts/n8n
@@ -80,7 +84,7 @@ jobs:
 
       - uses: azure/setup-helm@v4
         with:
-          version: v3.17.3
+          version: v3.21.4
 
       - uses: actions/setup-node@v4
         with:
