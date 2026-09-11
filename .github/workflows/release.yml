@@ -54,6 +54,16 @@ jobs:
           # affiché dans les notes au format que lit le bouton de copie.
           helm install t charts/n8n $HOSTS --set security.password=abcdefghij0123456789 --dry-run=client > /tmp/notes.txt
           grep -q 'password: N8n-abcdefghij0123456789' /tmp/notes.txt
+          # Bouton « Ouvrir » : même extraction qu'Onyxia (première URL d'Ingress
+          # citée, suivie de tout sauf espace et « ) »). Doit donner l'éditeur.
+          node -e '
+            const raw = require("fs").readFileSync("/tmp/notes.txt", "utf8");
+            const notes = raw.slice(raw.indexOf("NOTES:"));
+            const hosts = ["https://n8n.example.org", "https://mcp.example.org"];
+            const re = new RegExp(hosts.map(h => h.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?:[/?#][^\\s)]*)?").join("|"), "i");
+            const m = re.exec(notes);
+            if (!m || m[0] !== "https://n8n.example.org/") { console.error("URL du bouton Ouvrir :", m && m[0]); process.exit(1); }
+          '
 
           render "mot de passe tiré au sort"
           render "postgres externe" --set database.type=postgresdb --set database.postgres.host=pg --set database.postgres.password=x

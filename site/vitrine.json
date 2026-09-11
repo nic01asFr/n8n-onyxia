@@ -3,7 +3,13 @@
   "pitch": "Ton instance n8n sur SSPCloud, prête en deux minutes : éditeur de workflows, webhooks publics, et un serveur MCP pour que ton assistant IA construise les workflows avec toi.",
   "couleur": "#EA4B71",
   "depot": "https://github.com/nic01asFr/n8n-onyxia",
-  "tags": ["n8n", "MCP", "Onyxia", "SSPCloud", "Helm"],
+  "tags": [
+    "n8n",
+    "MCP",
+    "Onyxia",
+    "SSPCloud",
+    "Helm"
+  ],
   "produit": {
     "accroche": "n8n relie des API, des bases et des fichiers par des workflows visuels. Ce chart le lance dans ton espace SSPCloud comme n'importe quel service Onyxia : URL publique, mot de passe affiché dans « Mes services », données sur un volume persistant. Le serveur MCP livré avec lui donne à Claude, Cursor ou tout client MCP de quoi lire, créer et déboguer tes workflows.",
     "sequence": [
@@ -98,6 +104,10 @@
     ]
   },
   "journal": [
+    {
+      "version": "chart 1.0.1",
+      "texte": "Testé comme un utilisateur dans la console Onyxia : le bouton « Ouvrir » mène à l’éditeur, l’adresse MCP reste lisible dans la fenêtre du service, interface n8n homogène."
+    },
     {
       "version": "chart 1.0.0",
       "texte": "n8n 2.x, serveur MCP intégré au même service, provisioning dans le pod sans droit Kubernetes, formulaire et notes aux conventions Onyxia, PostgreSQL découvert automatiquement."

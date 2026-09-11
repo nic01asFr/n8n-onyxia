@@ -40,7 +40,8 @@ kubectl get secret <release> -o jsonpath='{.data.N8N_ENCRYPTION_KEY}' | base64 -
 
 - `library-chart` InseeFrLab pour l'ingress de l'éditeur, la route, les NetworkPolicy et la découverte PostgreSQL.
 - Fichiers `ingress-1-ui.yaml` puis `ingress-2-mcp.yaml` : l'éditeur reste la première URL du service.
-- NOTES en markdown : première URL citée = bouton « Ouvrir » ; ligne `password: <valeur>` = bouton « Copier le mot de passe ».
+- NOTES en markdown : première URL citée = bouton « Ouvrir » ; ligne `password: <valeur>` = bouton « Copier le mot de passe ». Le texte d'un lien ne doit pas être l'URL elle-même : Onyxia lirait `url](url` comme adresse. La CI rejoue l'extraction d'Onyxia sur les notes rendues.
+- Un service n'apparaît dans « Mes services » que si son propriétaire est l'utilisateur connecté (filtre de l'interface web) : sans le Secret `sh.onyxia.release.v1.<release>`, une installation en ligne de commande reste invisible.
 - Le chart ne crée pas le Secret `sh.onyxia.release.v1.<release>` : Onyxia le crée après une installation depuis le catalogue et échouerait s'il existait déjà. `install.sh` le pose pour la voie ligne de commande.
 - Placeholders `x-onyxia` sans espaces : `{{ user.email }}` n'est pas résolu par Onyxia.
 

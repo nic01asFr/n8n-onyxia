@@ -1,10 +1,14 @@
 {{/*
-Onyxia affiche ce fichier en markdown dans la fenêtre du service. Deux règles
-lues dans le code d'Onyxia :
+Onyxia affiche ce fichier en markdown dans la fenêtre du service. Règles lues
+dans le code d'Onyxia et vérifiées dans l'interface le 11/09/2026 :
   - le bouton « Ouvrir » suit la première URL d'Ingress citée ici : l'éditeur
-    n8n vient donc en premier ;
+    n8n vient donc en premier. Onyxia prend l'URL suivie de tout ce qui n'est
+    ni espace ni « ) » : le texte d'un lien ne doit pas être l'URL elle-même,
+    sinon « [url](url) » donne l'adresse cassée « url](url » ;
   - le bouton « Copier le mot de passe » cherche « password: <valeur> » : la
-    ligne du mot de passe reste sans mise en forme.
+    ligne du mot de passe reste sans mise en forme ;
+  - la fenêtre est étroite : une URL longue en code en ligne y est coupée, en
+    bloc de code elle défile.
 Ces notes sont conservées par Helm dans le Secret de la release : quiconque lit
 les Secrets du namespace lit aussi le mot de passe qu'elles affichent.
 */}}
@@ -12,10 +16,11 @@ les Secrets du namespace lit aussi le mot de passe qu'elles affichent.
 {{- $url := include "n8n.baseUrl" . -}}
 {{- $hasPassword := .Values.security.password -}}
 {{- $mcpUrl := printf "https://%s/mcp" .Values.mcp.hostname -}}
+{{- $volume := .Values.persistence.existingClaim | default (include "library-chart.fullname" .) -}}
 {{- if $fr }}
 ### Accès à n8n
 
-- Éditeur : [{{ $url }}]({{ $url }})
+- Éditeur : [ouvrir n8n]({{ $url }})
 - Identifiant : `{{ .Values.security.email | default "(à créer au premier accès)" }}`
 {{- if $hasPassword }}
 - Mot de passe / password: {{ include "n8n.ownerPassword" . }}
@@ -32,13 +37,20 @@ attendre : le premier visiteur de l'URL pourrait le faire à votre place.
 
 ### Piloter n8n depuis un assistant (MCP)
 
-- Adresse MCP : `{{ $mcpUrl }}`
-- Jeton : `{{ include "n8n.mcpToken" . }}`
+Adresse MCP :
+
+```
+{{ $mcpUrl }}
+```
+
+Jeton : `{{ include "n8n.mcpToken" . }}`
 
 Claude Code :
 
 ```bash
-claude mcp add n8n --transport http {{ $mcpUrl }} --header "Authorization: Bearer {{ include "n8n.mcpToken" . }}"
+claude mcp add n8n --transport http \
+  {{ $mcpUrl }} \
+  --header "Authorization: Bearer {{ include "n8n.mcpToken" . }}"
 ```
 
 La clé API n8n du serveur MCP est créée automatiquement, avec des droits
@@ -50,9 +62,9 @@ limités aux workflows, exécutions, étiquettes, tables, credentials et dossier
 - Webhooks : `{{ $url }}webhook/...`
 {{- if .Values.persistence.enabled }}
 {{- if include "n8n.postgresMode" . }}
-- Workflows et credentials sont dans PostgreSQL ; le volume `{{ .Values.persistence.existingClaim | default (include "library-chart.fullname" .) }}` ({{ .Values.persistence.size }}) garde les fichiers binaires et la clé API du MCP.
+- Workflows et credentials sont dans PostgreSQL ; le volume `{{ $volume }}` ({{ .Values.persistence.size }}) garde les fichiers binaires et la clé API du MCP.
 {{- else }}
-- Workflows, credentials et base SQLite vivent sur le volume `{{ .Values.persistence.existingClaim | default (include "library-chart.fullname" .) }}` ({{ .Values.persistence.size }}).
+- Workflows, credentials et base SQLite vivent sur le volume `{{ $volume }}` ({{ .Values.persistence.size }}).
 {{- end }}
 {{- if not .Values.persistence.keepOnUninstall }}
   Supprimer le service supprime ce volume : exportez vos workflows avant.
@@ -65,7 +77,7 @@ limités aux workflows, exécutions, étiquettes, tables, credentials et dossier
 {{- else }}
 ### n8n access
 
-- Editor: [{{ $url }}]({{ $url }})
+- Editor: [open n8n]({{ $url }})
 - Login: `{{ .Values.security.email | default "(create it on first visit)" }}`
 {{- if $hasPassword }}
 - Password: {{ include "n8n.ownerPassword" . }}
@@ -82,13 +94,20 @@ the first visitor of the URL could do it instead of you.
 
 ### Drive n8n from an assistant (MCP)
 
-- MCP endpoint: `{{ $mcpUrl }}`
-- Token: `{{ include "n8n.mcpToken" . }}`
+MCP endpoint:
+
+```
+{{ $mcpUrl }}
+```
+
+Token: `{{ include "n8n.mcpToken" . }}`
 
 Claude Code:
 
 ```bash
-claude mcp add n8n --transport http {{ $mcpUrl }} --header "Authorization: Bearer {{ include "n8n.mcpToken" . }}"
+claude mcp add n8n --transport http \
+  {{ $mcpUrl }} \
+  --header "Authorization: Bearer {{ include "n8n.mcpToken" . }}"
 ```
 
 The MCP server's n8n API key is created automatically, scoped to workflows,
@@ -100,9 +119,9 @@ executions, tags, data tables, credentials and folders.
 - Webhooks: `{{ $url }}webhook/...`
 {{- if .Values.persistence.enabled }}
 {{- if include "n8n.postgresMode" . }}
-- Workflows and credentials are stored in PostgreSQL; volume `{{ .Values.persistence.existingClaim | default (include "library-chart.fullname" .) }}` ({{ .Values.persistence.size }}) keeps binary files and the MCP API key.
+- Workflows and credentials are stored in PostgreSQL; volume `{{ $volume }}` ({{ .Values.persistence.size }}) keeps binary files and the MCP API key.
 {{- else }}
-- Workflows, credentials and the SQLite database live on volume `{{ .Values.persistence.existingClaim | default (include "library-chart.fullname" .) }}` ({{ .Values.persistence.size }}).
+- Workflows, credentials and the SQLite database live on volume `{{ $volume }}` ({{ .Values.persistence.size }}).
 {{- end }}
 {{- if not .Values.persistence.keepOnUninstall }}
   Deleting the service deletes this volume: export your workflows first.

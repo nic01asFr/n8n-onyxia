@@ -64,8 +64,6 @@ spec:
               value: {{ .Values.n8n.timezone | quote }}
             - name: TZ
               value: {{ .Values.n8n.timezone | quote }}
-            - name: N8N_DEFAULT_LOCALE
-              value: {{ .Values.userPreferences.language | default "en" | quote }}
             - name: N8N_LOG_LEVEL
               value: {{ .Values.n8n.logLevel | quote }}
             # --- Confidentialité -----------------------------------------------
