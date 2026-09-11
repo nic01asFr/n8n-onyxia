@@ -79,11 +79,18 @@
 {{- end -}}
 
 {{/*
-  Jeton d'administration du portail : même principe que le jeton MCP, avec un
-  suffixe distinct pour que l'un ne donne pas l'autre.
+  Secret que le portail joint à chaque appel de webhook, et que le credential
+  « Portail d'actions (en-tête) » exige côté n8n. Tiré au sort une fois, puis
+  relu dans le Secret : le changer rendrait ce credential faux, et toutes les
+  actions refusées.
 */}}
-{{- define "n8n.portalToken" -}}
-{{- .Values.portal.adminToken | default (printf "%s:n8n-portail" (include "n8n.ownerPassword" .) | sha256sum | trunc 48) -}}
+{{- define "n8n.portalWebhookSecret" -}}
+{{- if not (hasKey .Values "__portalWebhookSecret") -}}
+{{- $existing := include "n8n.existingSecretData" . | fromJson -}}
+{{- $stored := index $existing "PORTAL_WEBHOOK_SECRET" | default "" | b64dec -}}
+{{- $_ := set .Values "__portalWebhookSecret" ($stored | default (randAlphaNum 48)) -}}
+{{- end -}}
+{{- index .Values "__portalWebhookSecret" -}}
 {{- end -}}
 
 {{/*

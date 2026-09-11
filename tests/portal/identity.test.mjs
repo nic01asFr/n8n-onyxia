@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { IdentityError, createIdentityVerifier, decodeJwtPayload, parseBaseUrl } from "../../charts/n8n/files/portal/identity.mjs";
-import { DOC, GRIST, baseFor, fakeGrist, jwt, tokenFor } from "./helpers.mjs";
+import { ANON, DOC, GRIST, baseFor, fakeGrist, jwt, tokenFor } from "./helpers.mjs";
 
 test("parseBaseUrl n'accepte que les hôtes Grist de la liste", () => {
   assert.deepEqual(parseBaseUrl(baseFor(), [GRIST]), {
@@ -24,8 +24,25 @@ test("l'identité vient du jeton accepté par Grist", async () => {
   const grist = fakeGrist(new Set([token]));
   const verify = createIdentityVerifier({ allowedOrigins: [GRIST], fetchImpl: grist.fetchImpl });
   const identity = await verify({ token, baseUrl: baseFor() });
-  assert.deepEqual({ ...identity }, { userId: 42, docId: DOC, origin: GRIST, readOnly: false });
-  assert.match(grist.calls[0], /\/o\/docs\/api\/docs\/docTest00001\/tables\?auth=/);
+  const { expiresAt, ...rest } = identity;
+  assert.deepEqual(rest, { userId: 42, docId: DOC, origin: GRIST, docBase: baseFor(), readOnly: false, anonymous: false });
+  assert.ok(expiresAt > Date.now());
+  assert.match(grist.calls()[0], /\/o\/docs\/api\/docs\/docTest00001\/tables\?auth=/);
+});
+
+// Constaté : 42531 sur grist.numerique.gouv.fr, 40 sur docs.getgrist.com.
+test("le visiteur anonyme d'un document public est reconnu, sans rien coder en dur", async () => {
+  const anon = tokenFor(ANON);
+  const verify = createIdentityVerifier({ allowedOrigins: [GRIST], fetchImpl: fakeGrist(new Set([anon])).fetchImpl });
+  assert.equal((await verify({ token: anon, baseUrl: baseFor() })).anonymous, true);
+});
+
+test("si l'anonyme de l'instance est introuvable, l'identité le dit au lieu de deviner", async () => {
+  const token = tokenFor(42);
+  const verify = createIdentityVerifier({
+    allowedOrigins: [GRIST], fetchImpl: fakeGrist(new Set([token]), { sessionDown: true }).fetchImpl,
+  });
+  assert.equal((await verify({ token, baseUrl: baseFor() })).anonymous, null);
 });
 
 test("un jeton fabriqué est refusé : Grist ne l'a pas émis", async () => {
@@ -55,7 +72,7 @@ test("jeton expiré ou sans utilisateur : refusé sans appeler Grist", async () 
   const verify = createIdentityVerifier({ allowedOrigins: [GRIST], fetchImpl: grist.fetchImpl });
   await assert.rejects(verify({ token: tokenFor(42, DOC, { exp: 1 }), baseUrl: baseFor() }), /expiré/);
   await assert.rejects(verify({ token: jwt({ docId: DOC, exp: 9999999999 }), baseUrl: baseFor() }), /aucun utilisateur/);
-  assert.equal(grist.calls.length, 0);
+  assert.equal(grist.calls().length, 0);
 });
 
 test("un jeton vérifié n'est redemandé à Grist qu'après son expiration", async () => {
@@ -65,7 +82,7 @@ test("un jeton vérifié n'est redemandé à Grist qu'après son expiration", as
   const verify = createIdentityVerifier({ allowedOrigins: [GRIST], fetchImpl: grist.fetchImpl, now: () => t });
   await verify({ token, baseUrl: baseFor() });
   await verify({ token, baseUrl: baseFor() });
-  assert.equal(grist.calls.length, 1);
+  assert.equal(grist.calls().length, 1);
   t += 61000;
   await assert.rejects(verify({ token, baseUrl: baseFor() }), /expiré/);
 });

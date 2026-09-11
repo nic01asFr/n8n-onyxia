@@ -88,7 +88,7 @@ jobs:
       - name: Portail
         run: node --test tests/portal/*.test.mjs
 
-      # Portail activé : code embarqué dans la ConfigMap, jeton dans le Secret,
+      # Portail activé : code embarqué dans la ConfigMap, secret des webhooks dans le Secret,
       # conteneur, et refus d'un rendu sans hôte public.
       - name: Render with the portal
         run: |
@@ -96,7 +96,7 @@ jobs:
           HOSTS="--set ingress.hostname=n8n.example.org --set mcp.hostname=mcp.example.org --set security.email=a@example.org"
           helm template t charts/n8n $HOSTS --set portal.enabled=true --set portal.hostname=portail.example.org > /tmp/portal.yaml
           grep -q 'server.mjs:' /tmp/portal.yaml
-          grep -q 'PORTAL_ADMIN_TOKEN' /tmp/portal.yaml
+          grep -q 'PORTAL_WEBHOOK_SECRET' /tmp/portal.yaml
           grep -q 'command: \["node", "/portal/start.mjs"\]' /tmp/portal.yaml
           grep -q 'start.mjs:' /tmp/portal.yaml
           grep -q 'host: "portail.example.org"' /tmp/portal.yaml

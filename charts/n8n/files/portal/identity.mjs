@@ -61,6 +61,33 @@ function userIdFrom(payload) {
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
+// Un document public donne un jeton valide aux visiteurs non connectés : Grist
+// les range tous sous un même compte anonyme (anon@getgrist.com), dont
+// l'identifiant change d'une instance à l'autre (42531 sur
+// grist.numerique.gouv.fr, 40 sur docs.getgrist.com). Une session sans cookie
+// le révèle : c'est celle d'un anonyme.
+function createAnonymousResolver({ fetchImpl, now, timeoutMs }) {
+  const known = new Map();
+  return async function anonymousId(origin) {
+    const entry = known.get(origin);
+    if (entry && entry.until > now()) return entry.id;
+    let id = null;
+    try {
+      const response = await fetchImpl(`${origin}/api/session/access/active`, {
+        headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      const user = response.ok ? (await response.json())?.user : null;
+      if (user?.anonymous === true && Number.isSafeInteger(user.id)) id = user.id;
+    } catch {
+      id = null;
+    }
+    // Connu : une heure. Inconnu : on réessaie vite, sans rien conclure.
+    known.set(origin, { id, until: now() + (id === null ? 60000 : 3600000) });
+    return id;
+  };
+}
+
 // Vérifie un jeton contre Grist et le garde en cache jusqu'à son expiration :
 // un widget qui enchaîne les appels ne coûte qu'un aller-retour vers Grist.
 export function createIdentityVerifier({ allowedOrigins, fetchImpl = fetch, now = Date.now, timeoutMs = 10000 }) {
@@ -68,6 +95,7 @@ export function createIdentityVerifier({ allowedOrigins, fetchImpl = fetch, now 
     throw new Error("Aucune origine Grist autorisée : renseignez PORTAL_GRIST_ORIGINS.");
   }
   const cache = new Map();
+  const anonymousId = createAnonymousResolver({ fetchImpl, now, timeoutMs });
 
   function purge() {
     const t = now();
@@ -112,7 +140,15 @@ export function createIdentityVerifier({ allowedOrigins, fetchImpl = fetch, now 
       throw new IdentityError(`Grist a répondu ${response.status} à la vérification du jeton.`, 502);
     }
 
-    const identity = Object.freeze({ userId, docId: canonicalDocId, origin, readOnly: Boolean(payload.readOnly) });
+    // true : visiteur non connecté ; false : compte Grist ; null : impossible
+    // à dire (l'appelant décide, et refuse s'il exige un compte).
+    const anonId = await anonymousId(origin);
+    const anonymous = anonId === null ? null : userId === anonId;
+    // docBase : adresse d'API du document, déjà validée contre la liste
+    // blanche ; c'est là qu'un workflow utilisera un jeton délégué.
+    const identity = Object.freeze({
+      userId, docId: canonicalDocId, origin, docBase, readOnly: Boolean(payload.readOnly), anonymous, expiresAt,
+    });
     purge();
     cache.set(key, { identity, expiresAt });
     return identity;

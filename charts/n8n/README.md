@@ -18,7 +18,6 @@ n8n pour Onyxia, avec serveur MCP intégré. Vue d'ensemble et installation : [R
 | `mcp.securityMode` | `moderate` | | Protection SSRF des outils MCP |
 | `portal.enabled` | `false` | | Portail d'actions : widget Grist qui lance des workflows choisis |
 | `portal.hostname` | vide (obligatoire si portail) | `{{project.id}}-n8n-portail-{{k8s.randomSubdomain}}.{{k8s.domain}}` | Hôte du portail |
-| `portal.adminToken` | dérivé du mot de passe | | Jeton du mode « Configurer » |
 | `portal.gristOrigins` | grist.numerique.gouv.fr, docs.getgrist.com | | Sites Grist acceptés et autorisés à intégrer le portail |
 | `provisioning.enabled` | `true` | | Création de l'owner et de la clé API |
 | `provisioning.apiKeyScopePrefixes` | workflows, exécutions, étiquettes, tables, credentials, dossiers | | Droits de la clé API du MCP |
@@ -34,7 +33,7 @@ Liste complète et commentée : [values.yaml](values.yaml). Formulaire : [values
 
 ## Secrets
 
-Le Secret de la release contient `N8N_ENCRYPTION_KEY`, `OWNER_EMAIL`, `OWNER_PASSWORD`, `MCP_AUTH_TOKEN` et, portail activé, `PORTAL_ADMIN_TOKEN`. Une valeur vide est tirée au sort une fois, puis relue dans le Secret aux mises à jour (`lookup`). La clé de chiffrement est à sauvegarder : sans elle, les credentials sont illisibles.
+Le Secret de la release contient `N8N_ENCRYPTION_KEY`, `OWNER_EMAIL`, `OWNER_PASSWORD`, `MCP_AUTH_TOKEN` et, portail activé, `PORTAL_WEBHOOK_SECRET` (secret joint aux webhooks, à ne pas changer : le credential n8n du portail le porte). Une valeur vide est tirée au sort une fois, puis relue dans le Secret aux mises à jour (`lookup`). La clé de chiffrement est à sauvegarder : sans elle, les credentials sont illisibles.
 
 ```bash
 kubectl get secret <release> -o jsonpath='{.data.N8N_ENCRYPTION_KEY}' | base64 -d
@@ -53,11 +52,14 @@ kubectl get secret <release> -o jsonpath='{.data.N8N_ENCRYPTION_KEY}' | base64 -
 
 Le propriétaire choisit des workflows et les transforme en actions : un formulaire guidé (contrat FormDef de Widgets Grist, étendu par `target` et `result`) que les personnes ayant accès à un document Grist lancent depuis un widget.
 
-- **Seule porte publique.** Le portail appelle les webhooks sur localhost : ils n'ont pas à être exposés, et l'allowlist IP de l'éditeur ne gêne pas les destinataires.
-- **Identité vérifiée.** Chaque appel porte le jeton `getAccessToken` du lecteur. Le portail le présente à Grist (hôtes de `portal.gristOrigins` uniquement) et ne lit l'utilisateur et le document dans ce jeton que si Grist l'accepte.
+- **Seule porte vers les workflows.** Le portail appelle les webhooks sur localhost avec l'en-tête `X-Portail-Secret`. Le credential n8n « Portail d'actions (en-tête) », créé par le portail, l'exige : un appel direct au webhook, qui reste joignable par l'hôte de l'éditeur, est refusé, et le contexte `_portail` ne peut pas être forgé. Ce credential ne peut pas servir à un nœud HTTP Request.
+- **Identité vérifiée.** Chaque appel porte le jeton `getAccessToken` du lecteur. Le portail le présente à Grist (hôtes de `portal.gristOrigins` uniquement) et ne lit l'utilisateur et le document dans ce jeton que si Grist l'accepte. Le visiteur anonyme d'un document public est reconnu (identifiant découvert par `/api/session/access/active`) : par défaut, il ne voit ni ne lance rien.
 - **Droits dans le service.** Les actions exposées, les documents qui les ouvrent et le compte propriétaire sont dans `onyxia/portail.json` sur le volume. Un éditeur du document ne peut rien s'y ouvrir.
+- **Propriétaire.** Le mode « Configurer » s'ouvre avec une clé API de ce n8n (Settings > n8n API), échangée contre une session d'une heure liée au compte Grist ; la clé n'est pas conservée. Le premier compte Grist connecté qui s'y identifie devient propriétaire.
 - **Entrées contrôlées côté serveur.** Seuls les champs déclarés passent, convertis et bornés. Le workflow reçoit les entrées à plat (`$json.body.<champ>`) et le contexte sous `$json.body._portail` : `runId`, `action`, `requester.gristUserId`, `document.docId`.
-- **Déclencheur accepté** : Webhook en POST, sans paramètre de chemin ni authentification propre, workflow publié.
+- **Accès au document, par action** (aucun, lecture, écriture). Le widget demande un jeton propre au lancement ; le portail vérifie qu'il appartient au même lecteur et au même document, puis le transmet sous `$json.body._portail.grist` : `baseUrl`, `token`, `access` (`read` si le lecteur n'a que la lecture), `expiresAt` (quelques minutes). Le workflow l'utilise ainsi : `{{ $json.body._portail.grist.baseUrl }}/tables/Table1/records?auth={{ $json.body._portail.grist.token }}`.
+- **Résultat dans le document, par action** : `writeBack: { tableId, fields: { cléDuRésultat: colonne } }`. C'est le widget qui écrit, avec les droits du lecteur ; le portail n'écrit jamais dans Grist.
+- **Déclencheur accepté** : Webhook en POST, sans paramètre de chemin, protégé par le credential du portail, workflow publié.
 
 Code : [files/portal/](files/portal/). Tests : `node --test tests/portal/*.test.mjs`. Aperçu local sans Grist ni n8n : `node tests/portal/dev-server.mjs`.
 

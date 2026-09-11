@@ -14,7 +14,7 @@ function start(dir) {
     env: {
       ...process.env,
       PORTAL_PORT: "0",
-      PORTAL_ADMIN_TOKEN: "x",
+      PORTAL_WEBHOOK_SECRET: "x",
       PORTAL_STORE_FILE: join(work, "portail.json"),
       PORTAL_PUBLIC_DIR: dir,
     },

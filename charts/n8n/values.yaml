@@ -112,9 +112,9 @@ portal:
   enabled: false
   # Hôte public du portail. Onyxia le renseigne.
   hostname: ""
-  # Jeton d'administration (mode « Configurer »). Vide : dérivé du mot de passe
-  # owner, stable et affiché dans les notes.
-  adminToken: ""
+  # Le mode « Configurer » s'ouvre avec une clé API créée dans n8n (Settings >
+  # n8n API), par le compte Grist propriétaire : aucun jeton à régler ici. Le
+  # secret joint aux webhooks est tiré au sort et gardé dans le Secret.
   # Hôtes Grist dont le portail accepte les documents, et qui peuvent
   # l'intégrer en iframe.
   gristOrigins: "https://grist.numerique.gouv.fr,https://docs.getgrist.com"

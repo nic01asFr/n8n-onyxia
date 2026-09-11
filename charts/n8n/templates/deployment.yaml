@@ -331,11 +331,11 @@ spec:
               value: {{ .Values.portal.gristPluginUrl | quote }}
             - name: PORTAL_RUN_TIMEOUT_MS
               value: {{ mul .Values.portal.runTimeoutSeconds 1000 | quote }}
-            - name: PORTAL_ADMIN_TOKEN
+            - name: PORTAL_WEBHOOK_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ $secretName }}
-                  key: PORTAL_ADMIN_TOKEN
+                  key: PORTAL_WEBHOOK_SECRET
           livenessProbe:
             httpGet:
               path: /healthz

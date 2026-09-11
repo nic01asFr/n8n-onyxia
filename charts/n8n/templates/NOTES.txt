@@ -67,14 +67,13 @@ ci-dessous et un accès complet au document :
 https://{{ .Values.portal.hostname }}/
 ```
 
-Jeton d'administration, pour le bouton « Configurer » :
+Pour choisir les workflows exposés : créez une clé API dans n8n (Settings >
+n8n API), puis cliquez sur « Configurer » dans le widget, connecté à Grist. Le
+premier compte Grist qui s'y connecte devient propriétaire du portail.
 
-```
-{{ include "n8n.portalToken" . }}
-```
-
-Le premier compte Grist qui l'utilise devient propriétaire du portail. Un
-workflow devient une action par son déclencheur Webhook (POST), une fois publié.
+Un workflow devient une action par son déclencheur Webhook : méthode POST,
+workflow publié, authentification Header Auth avec le credential « Portail
+d'actions (en-tête) », créé automatiquement dans n8n.
 {{- end }}
 
 ### Bon à savoir
@@ -144,14 +143,13 @@ document access:
 https://{{ .Values.portal.hostname }}/
 ```
 
-Admin token, for the "Configurer" button:
+To choose the exposed workflows: create an API key in n8n (Settings > n8n
+API), then click "Configurer" in the widget while signed in to Grist. The first
+Grist account to sign in there becomes the portal owner.
 
-```
-{{ include "n8n.portalToken" . }}
-```
-
-The first Grist account that uses it becomes the portal owner. A workflow
-becomes an action through its Webhook trigger (POST), once published.
+A workflow becomes an action through its Webhook trigger: POST, published, and
+Header Auth with the "Portail d'actions (en-tête)" credential, created
+automatically in n8n.
 {{- end }}
 
 ### Good to know

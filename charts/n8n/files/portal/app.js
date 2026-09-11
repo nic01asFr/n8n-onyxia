@@ -13,14 +13,16 @@
 (function () {
   'use strict';
 
-  var ADMIN_KEY = 'portail-admin';
+  // Session du mode « Configurer », ouverte avec une clé API n8n qui, elle,
+  // n'est jamais gardée : seule la session (une heure) est conservée.
+  var SESSION_KEY = 'portail-session';
   var root = document.getElementById('app');
   var state = {
     token: null,
     tokenExp: 0,
     baseUrl: null,
     catalog: null,
-    adminToken: readSession(ADMIN_KEY)
+    session: readSession(SESSION_KEY)
   };
 
   function readSession(key) {
@@ -88,7 +90,7 @@
     return gristAuth().then(function () {
       var headers = { 'x-grist-token': state.token, 'x-grist-base': state.baseUrl };
       if (body !== undefined) headers['content-type'] = 'application/json';
-      if (admin) headers.authorization = 'Bearer ' + state.adminToken;
+      if (admin) headers.authorization = 'Bearer ' + state.session;
       return fetch(path, { method: method, headers: headers, body: body === undefined ? undefined : JSON.stringify(body) });
     }).then(function (res) {
       return res.json().catch(function () { return null; }).then(function (json) {
@@ -114,7 +116,7 @@
 
   function canConfigure() {
     var c = state.catalog;
-    return c && c.adminEnabled && (c.isOwner || !c.paired);
+    return c && c.anonymous === false && (c.isOwner || !c.paired);
   }
 
   function renderHome() {
@@ -130,8 +132,10 @@
     ]);
     var body;
     if (!c.actions.length) {
-      body = alertBox('info', !c.paired
-        ? "Ce portail n'est pas encore configuré. Son propriétaire peut le faire avec « Configurer »."
+      body = alertBox('info', c.signInRequired
+        ? 'Connectez-vous à Grist pour voir les actions de ce document.'
+        : !c.paired
+        ? "Ce portail n'est pas encore configuré. Son propriétaire peut le faire avec « Configurer », une fois connecté à Grist."
         : c.isOwner
           ? "Aucune action n'est ouverte dans ce document. Passez par « Configurer » pour en exposer."
           : "Aucune action n'est ouverte dans ce document. Demandez-en l'accès au propriétaire du portail.");
@@ -170,17 +174,40 @@
     }, true);
   }
 
+  // Ce que l'action fera des données du lecteur, dit avant qu'il n'envoie.
+  function consentNotice(action) {
+    var lines = ['Cette action est exécutée par le service n8n du propriétaire de ce portail : vos réponses lui sont transmises.'];
+    if (action.gristAccess === 'read') lines.push('Elle pourra lire ce document, avec vos droits.');
+    if (action.gristAccess === 'write') lines.push('Elle pourra lire et modifier ce document, avec vos droits, pendant quelques minutes.');
+    if (action.writeBack) lines.push('Le résultat sera enregistré dans la table « ' + action.writeBack.tableId + ' ».');
+    return h('div', { class: 'fr-alert fr-alert--info portail__consentement' }, lines.map(function (l) { return h('p', { text: l }); }));
+  }
+
+  // Jeton propre à ce lancement, demandé au dernier moment : il n'est valable
+  // que quelques minutes et pour ce seul document.
+  function delegatedToken(action) {
+    if (!action.gristAccess || action.gristAccess === 'none') return Promise.resolve(null);
+    return window.grist.docApi.getAccessToken({ readOnly: action.gristAccess !== 'write' }).then(function (tk) {
+      return { token: tk.token };
+    });
+  }
+
   function renderAction(action) {
     var mountPoint = h('div', { class: 'portail__formulaire' });
     keepFocusOnButtons(mountPoint);
     show(
       h('nav', { class: 'portail__retour' }, [button('← Toutes les actions', renderHome, 'tertiary-no-outline')]),
+      consentNotice(action),
       mountPoint
     );
     window.FormEngine.mount(mountPoint, action.formdef, {
       skipProbe: true,
       submit: function (data) {
-        return api('POST', 'api/run', { action: action.key, inputs: data }).then(function (response) {
+        return delegatedToken(action).then(function (delegated) {
+          var body = { action: action.key, inputs: data };
+          if (delegated) body.delegated = delegated;
+          return api('POST', 'api/run', body);
+        }).then(function (response) {
           // Le moteur affiche ensuite son message de succès : on le remplace par
           // le résultat, une fois ce rendu passé.
           setTimeout(function () { renderResult(action, response); }, 0);
@@ -188,6 +215,20 @@
         });
       }
     });
+  }
+
+  // Écriture du résultat par le widget lui-même, avec les droits du lecteur :
+  // le portail n'a aucun accès en écriture au document.
+  function writeBack(action, result) {
+    if (!action.writeBack) return Promise.resolve(null);
+    var fields = {};
+    Object.keys(action.writeBack.fields).forEach(function (key) {
+      if (!Object.prototype.hasOwnProperty.call(result, key)) return;
+      var v = result[key];
+      fields[action.writeBack.fields[key]] = v !== null && typeof v === 'object' ? JSON.stringify(v) : v;
+    });
+    if (!Object.keys(fields).length) return Promise.reject(new Error('le résultat ne contient aucune des clés à enregistrer'));
+    return window.grist.docApi.applyUserActions([['AddRecord', action.writeBack.tableId, null, fields]]);
   }
 
   function isSafeLink(value) {
@@ -246,6 +287,16 @@
         renderValue(f.render, result[f.key])
       ]);
     });
+    var saved = h('div', { role: 'status' });
+    if (action.writeBack) {
+      saved.replaceChildren(h('p', { class: 'fr-text--sm', text: 'Enregistrement du résultat dans « ' + action.writeBack.tableId + ' »…' }));
+      writeBack(action, result).then(function () {
+        saved.replaceChildren(alertBox('success', 'Résultat enregistré dans la table « ' + action.writeBack.tableId + ' ».'));
+      }, function (error) {
+        saved.replaceChildren(alertBox('warning', 'Résultat affiché mais non enregistré dans « ' + action.writeBack.tableId +
+          ' » : ' + ((error && error.message) || 'écriture refusée') + '.'));
+      });
+    }
     show(
       h('nav', { class: 'portail__retour' }, [button('← Toutes les actions', renderHome, 'tertiary-no-outline')]),
       h('h1', { class: 'fr-h4', text: action.title }),
@@ -253,6 +304,7 @@
         ? 'Demande transmise. Le traitement se poursuit dans n8n.'
         : 'Action terminée en ' + Math.max(1, Math.round(response.durationMs / 1000)) + ' s.'),
       items.length ? h('section', { class: 'portail__resultat', 'aria-label': 'Résultat' }, items) : null,
+      saved,
       h('div', { class: 'fr-btns-group' }, [
         button('Relancer', function () { renderAction(action); }),
         button('Toutes les actions', renderHome, 'secondary')
@@ -263,11 +315,21 @@
   // ── Configurer ───────────────────────────────────────────────────────────
 
   function renderAdminLogin(message) {
-    var input = h('input', { class: 'fr-input', type: 'password', id: 'jeton-admin', autocomplete: 'off' });
+    var input = h('input', { class: 'fr-input', type: 'password', id: 'cle-n8n', autocomplete: 'off' });
+    var pending = false;
     function submit() {
-      state.adminToken = input.value.trim();
-      writeSession(ADMIN_KEY, state.adminToken);
-      renderConfig();
+      if (pending || !input.value.trim()) return;
+      pending = true;
+      api('POST', 'api/admin/login', { apiKey: input.value.trim() }).then(function (r) {
+        input.value = '';
+        state.session = r.session;
+        writeSession(SESSION_KEY, r.session);
+        if (state.catalog) { state.catalog.paired = true; state.catalog.isOwner = true; }
+        renderConfig();
+      }, function (error) {
+        pending = false;
+        renderAdminLogin(error.message);
+      });
     }
     input.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
     show(
@@ -275,32 +337,29 @@
       h('h1', { class: 'fr-h4', text: 'Configurer le portail' }),
       message ? alertBox('error', message) : null,
       h('div', { class: 'fr-input-group' }, [
-        h('label', { class: 'fr-label', for: 'jeton-admin' }, [
-          "Jeton d'administration",
-          h('span', { class: 'fr-hint-text', text: " — dans les notes du service n8n, sur Onyxia (« Mes services »)." })
+        h('label', { class: 'fr-label', for: 'cle-n8n' }, [
+          'Clé API de votre n8n',
+          h('span', { class: 'fr-hint-text', text: ' — dans n8n : Settings → n8n API → Create an API key. Elle ouvre une session d\'une heure et n\'est pas conservée.' })
         ]),
         input
       ]),
-      h('div', { class: 'fr-btns-group' }, [button('Continuer', submit)])
+      state.catalog && !state.catalog.paired
+        ? h('p', { class: 'fr-text--sm', text: 'Première connexion : votre compte Grist deviendra le propriétaire de ce portail.' })
+        : null,
+      h('div', { class: 'fr-btns-group' }, [button('Se connecter', submit)])
     );
     input.focus();
   }
 
   function renderConfig() {
-    if (!state.adminToken) { renderAdminLogin(); return; }
+    if (!state.session) { renderAdminLogin(); return; }
     show(h('p', { class: 'portail__attente', text: 'Lecture des workflows…' }));
-    var start = state.catalog && !state.catalog.paired
-      ? api('POST', 'api/admin/pair', undefined, true)
-      : Promise.resolve();
-    start.then(function () { return api('GET', 'api/admin/state', undefined, true); })
-      .then(function (admin) {
-        if (state.catalog) { state.catalog.paired = true; state.catalog.isOwner = true; }
-        renderAdmin(admin);
-      })
+    api('GET', 'api/admin/state', undefined, true)
+      .then(function (admin) { renderAdmin(admin); })
       .catch(function (error) {
         if (error.status === 401) {
-          state.adminToken = '';
-          writeSession(ADMIN_KEY, '');
+          state.session = '';
+          writeSession(SESSION_KEY, '');
           renderAdminLogin(error.message);
         } else {
           show(
@@ -334,7 +393,12 @@
               ])
             ]),
             h('div', { class: 'portail__admin-boutons' }, [
-              button('Modifier', function () { renderEditor({ key: key, workflowId: action.workflowId, node: action.node, icon: action.icon, formdef: action.formdef, existing: true }); }, 'sm'),
+              button('Modifier', function () {
+                renderEditor({
+                  key: key, workflowId: action.workflowId, node: action.node, icon: action.icon, formdef: action.formdef,
+                  gristAccess: action.gristAccess || 'none', writeBack: action.writeBack || null, existing: true
+                });
+              }, 'sm'),
               button('Retirer', function (event) {
                 var btn = event.currentTarget;
                 if (btn.getAttribute('data-confirm') !== 'oui') {
@@ -350,11 +414,19 @@
       : h('p', { class: 'fr-text--sm', text: "Aucune action exposée pour l'instant : choisissez un workflow ci-dessous." });
 
     var saveStatus = h('p', { class: 'fr-text--sm', role: 'status' });
+    var signedIn = h('input', { type: 'checkbox', id: 'comptes-connectes', checked: admin.signedInOnly !== false });
+    var signedInBox = h('div', { class: 'fr-checkbox-group' }, [
+      signedIn,
+      h('label', { class: 'fr-label', for: 'comptes-connectes' }, [
+        'Réservé aux comptes Grist connectés (recommandé)',
+        h('span', { class: 'fr-hint-text', text: ' — si le document est public, ses visiteurs anonymes ne voient ni ne lancent rien.' })
+      ])
+    ]);
     var saveAccess = button('Enregistrer les accès de ce document', function () {
       var chosen = keys.filter(function (k) { return opened[k]; });
-      api('POST', 'api/admin/access', { actions: chosen }, true).then(function (r) {
+      api('POST', 'api/admin/access', { actions: chosen, signedInOnly: signedIn.checked }, true).then(function (r) {
         saveStatus.textContent = r.openedHere.length
-          ? r.openedHere.length + ' action(s) ouverte(s) à toute personne ayant accès à ce document.'
+          ? r.openedHere.length + ' action(s) ouverte(s) à ' + (r.signedInOnly ? 'toute personne connectée ayant accès' : 'toute personne ayant accès, même anonyme,') + ' à ce document.'
           : 'Aucune action ouverte dans ce document.';
         return api('GET', 'api/catalog').then(function (c) { state.catalog = c; });
       }, function (e) { saveStatus.textContent = e.message; });
@@ -368,7 +440,10 @@
             ? h('span', { class: 'fr-badge fr-badge--warning', text: 'Non exposable : ' + t.blocker })
             : button('Exposer', function () {
                 api('POST', 'api/admin/draft', { workflowId: wf.id, node: t.node }, true).then(function (draft) {
-                  renderEditor({ key: draft.key, workflowId: wf.id, node: t.node, icon: '', formdef: draft.formdef, existing: false });
+                  renderEditor({
+                    key: draft.key, workflowId: wf.id, node: t.node, icon: '', formdef: draft.formdef,
+                    gristAccess: draft.gristAccess || 'none', writeBack: draft.writeBack || null, existing: false
+                  });
                 }, report);
               }, 'sm')
         ]);
@@ -389,14 +464,16 @@
       notice,
       h('section', { class: 'portail__bloc' }, [
         h('h2', { class: 'fr-h5', text: 'Actions exposées' }),
-        h('p', { class: 'fr-text--sm', text: 'Cochez celles à ouvrir dans ce document : toute personne qui y a accès pourra les lancer.' }),
+        h('p', { class: 'fr-text--sm', text: 'Cochez celles à ouvrir dans ce document : les personnes qui y ont accès pourront les lancer.' }),
         actionsList,
+        keys.length ? signedInBox : null,
         keys.length ? h('div', { class: 'fr-btns-group' }, [saveAccess]) : null,
         saveStatus
       ]),
       h('section', { class: 'portail__bloc' }, [
         h('h2', { class: 'fr-h5', text: 'Workflows de votre n8n' }),
-        h('p', { class: 'fr-text--sm', text: 'Un workflow devient une action par son déclencheur webhook (méthode POST). Il doit être publié pour répondre.' }),
+        h('p', { class: 'fr-text--sm', text: 'Un workflow devient une action par son déclencheur Webhook : méthode POST, workflow publié, et authentification Header Auth avec le credential « ' +
+          admin.credential.name + ' », créé pour vous dans n8n. Ce credential porte un secret que seul le portail envoie : un appel direct au webhook est refusé.' }),
         workflows
       ])
     );
@@ -407,6 +484,15 @@
     var iconInput = h('input', { class: 'fr-input', id: 'icone-action', value: draft.icon || '', maxlength: '8' });
     var json = h('textarea', { class: 'fr-input portail__json-edit', id: 'formdef-action', rows: '18', spellcheck: 'false' });
     json.value = JSON.stringify(draft.formdef, null, 2);
+    var access = h('select', { class: 'fr-select', id: 'acces-document' }, [
+      h('option', { value: 'none', text: 'Aucun : le workflow ne touche pas au document' }),
+      h('option', { value: 'read', text: 'Lecture : le workflow lit le document, avec les droits du lecteur' }),
+      h('option', { value: 'write', text: 'Écriture : le workflow lit et modifie le document, avec les droits du lecteur' })
+    ]);
+    access.value = draft.gristAccess || 'none';
+    var writeBackInput = h('textarea', { class: 'fr-input portail__json-edit portail__json-edit--court', id: 'ecriture-resultat', rows: '4', spellcheck: 'false',
+      placeholder: '{ "tableId": "Resultats", "fields": { "resume": "Resume" } }' });
+    writeBackInput.value = draft.writeBack ? JSON.stringify(draft.writeBack, null, 2) : '';
     var feedback = h('div', { role: 'status' });
     var preview = h('div', { class: 'portail__apercu' });
     keepFocusOnButtons(preview);
@@ -453,8 +539,16 @@
     function save() {
       var fd = parse();
       if (!fd) return;
+      var wb = null;
+      if (writeBackInput.value.trim()) {
+        try { wb = JSON.parse(writeBackInput.value); } catch (e) {
+          feedback.replaceChildren(alertBox('error', 'Écriture du résultat : JSON illisible (' + e.message + ').'));
+          return;
+        }
+      }
       api('POST', 'api/admin/action', {
-        key: keyInput.value.trim(), workflowId: draft.workflowId, node: draft.node, icon: iconInput.value.trim(), formdef: fd
+        key: keyInput.value.trim(), workflowId: draft.workflowId, node: draft.node, icon: iconInput.value.trim(), formdef: fd,
+        gristAccess: access.value, writeBack: wb
       }, true).then(function (r) {
         feedback.replaceChildren(alertBox(r.published ? 'success' : 'warning', r.published
           ? 'Action enregistrée. Ouvrez-la dans ce document depuis la liste.'
@@ -477,9 +571,23 @@
           h('div', { class: 'fr-input-group' }, [
             h('label', { class: 'fr-label', for: 'formdef-action' }, [
               'Formulaire (FormDef)',
-              h('span', { class: 'fr-hint-text', text: ' — titre, sections et champs ; « result » décrit ce qui est affiché du retour.' })
+              h('span', { class: 'fr-hint-text', text: ' — titre, sections et champs ; « result.fields » liste les clés du retour à afficher. Sans clé déclarée, tout le retour du workflow est affiché.' })
             ]),
             json
+          ]),
+          h('div', { class: 'fr-select-group' }, [
+            h('label', { class: 'fr-label', for: 'acces-document' }, [
+              'Accès au document pendant l\'exécution',
+              h('span', { class: 'fr-hint-text', text: ' — jeton du lecteur, valable quelques minutes, transmis au workflow dans $json.body._portail.grist.' })
+            ]),
+            access
+          ]),
+          h('div', { class: 'fr-input-group' }, [
+            h('label', { class: 'fr-label', for: 'ecriture-resultat' }, [
+              'Enregistrer le résultat dans le document (facultatif)',
+              h('span', { class: 'fr-hint-text', text: ' — table et, pour chaque clé du résultat, la colonne qui la reçoit. Le widget écrit avec les droits du lecteur.' })
+            ]),
+            writeBackInput
           ]),
           feedback,
           h('div', { class: 'fr-btns-group' }, [

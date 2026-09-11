@@ -16,7 +16,7 @@ const VERSION = 1;
 const ACTION_KEY = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
 function emptyState() {
-  return { version: VERSION, owner: null, actions: {}, access: {} };
+  return { version: VERSION, owner: null, actions: {}, access: {}, settings: {} };
 }
 
 // La clé d'accès réunit l'hôte Grist et le document : deux instances Grist
@@ -53,6 +53,16 @@ export async function openStore(file) {
   return {
     owner() {
       return state.owner;
+    },
+
+    setting(key) {
+      return state.settings[key] ?? null;
+    },
+
+    async setSetting(key, value) {
+      if (state.settings[key] === value) return;
+      state.settings[key] = value;
+      await persist();
     },
 
     async pairOwner({ origin, userId }) {
@@ -106,13 +116,18 @@ export async function openStore(file) {
       return Object.values(state.access);
     },
 
-    async setAccess({ origin, docId, label = "", actions }) {
+    // signedInOnly : un document public donne un jeton aux visiteurs non
+    // connectés ; par défaut, ils ne voient ni ne lancent rien.
+    async setAccess({ origin, docId, label = "", actions, signedInOnly = true }) {
       const known = actions.filter((key) => state.actions[key]);
       const k = accessKey(origin, docId);
       if (known.length === 0) {
         delete state.access[k];
       } else {
-        state.access[k] = { kind: "grist-doc", origin, docId, label, actions: known, updatedAt: new Date().toISOString() };
+        state.access[k] = {
+          kind: "grist-doc", origin, docId, label, actions: known,
+          signedInOnly: signedInOnly !== false, updatedAt: new Date().toISOString(),
+        };
       }
       await persist();
       return state.access[k] ?? null;

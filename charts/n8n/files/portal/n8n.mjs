@@ -41,10 +41,18 @@ async function readLimited(response, max) {
   return Buffer.concat(chunks).toString("utf8");
 }
 
+// En-tête secret joint par le portail à chaque appel. Le webhook d'une action
+// l'exige par un credential « Header Auth » : un appel direct à son adresse,
+// qui reste joignable par l'hôte de l'éditeur, est alors refusé par n8n, et le
+// contexte _portail ne peut plus être forgé.
+export const SECRET_HEADER = "X-Portail-Secret";
+export const CREDENTIAL_NAME = "Portail d'actions (en-tête)";
+const HEADER_AUTH_TYPE = "httpHeaderAuth";
+
 // Déclencheurs qu'un portail sait appeler : webhook POST, sans paramètre de
-// chemin. Les autres sont signalés avec la raison, pour que le propriétaire
-// sache quoi changer dans son workflow.
-export function webhookTriggers(workflow) {
+// chemin, protégé par le credential du portail. Les autres sont signalés avec
+// la raison, pour que le propriétaire sache quoi changer dans son workflow.
+export function webhookTriggers(workflow, { credentialId = null } = {}) {
   const nodes = Array.isArray(workflow?.nodes) ? workflow.nodes : [];
   return nodes
     .filter((node) => node.type === WEBHOOK_TYPE && !node.disabled)
@@ -53,11 +61,16 @@ export function webhookTriggers(workflow) {
       const method = String(p.httpMethod || "GET").toUpperCase();
       const path = String(p.path || node.webhookId || "").replace(/^\/+|\/+$/g, "");
       const responseMode = p.responseMode || "onReceived";
+      const auth = p.authentication || "none";
+      const usedCredential = node.credentials?.[HEADER_AUTH_TYPE]?.id ?? null;
       let blocker = null;
       if (method !== "POST") blocker = `le webhook attend ${method}, le portail envoie POST`;
       else if (!path) blocker = "le webhook n'a pas de chemin";
       else if (path.includes(":")) blocker = "le chemin du webhook contient un paramètre";
-      else if (p.authentication && p.authentication !== "none") blocker = "le webhook exige une authentification";
+      else if (auth === "none") blocker = `webhook non protégé : réglez son authentification sur Header Auth avec le credential « ${CREDENTIAL_NAME} »`;
+      else if (auth !== "headerAuth" || !credentialId || String(usedCredential) !== String(credentialId)) {
+        blocker = `le webhook doit utiliser le credential « ${CREDENTIAL_NAME} » (Header Auth)`;
+      }
       return { node: node.name, method, path, responseMode, blocker };
     });
 }
@@ -114,7 +127,7 @@ function inputNamesFromCode(code) {
   return names;
 }
 
-export function createN8nClient({ baseUrl, apiKeyFile, fetchImpl = fetch, runTimeoutMs = 120000 }) {
+export function createN8nClient({ baseUrl, apiKeyFile, webhookSecret = "", fetchImpl = fetch, runTimeoutMs = 120000 }) {
   async function apiKey() {
     try {
       return (await readFile(apiKeyFile, "utf8")).trim();
@@ -123,35 +136,79 @@ export function createN8nClient({ baseUrl, apiKeyFile, fetchImpl = fetch, runTim
     }
   }
 
-  async function api(path) {
-    let response;
+  async function request(path, { method = "GET", body, key } = {}) {
     try {
-      response = await fetchImpl(`${baseUrl}/api/v1${path}`, {
-        headers: { "x-n8n-api-key": await apiKey(), accept: "application/json" },
+      return await fetchImpl(`${baseUrl}/api/v1${path}`, {
+        method,
+        headers: {
+          "x-n8n-api-key": key ?? (await apiKey()),
+          accept: "application/json",
+          ...(body === undefined ? {} : { "content-type": "application/json" }),
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
         signal: AbortSignal.timeout(15000),
       });
     } catch (error) {
       if (error instanceof N8nError) throw error;
       throw new N8nError("n8n ne répond pas.", 503);
     }
+  }
+
+  async function api(path, options) {
+    const response = await request(path, options);
     if (!response.ok) throw new N8nError(`L'API de n8n a répondu ${response.status}.`);
     return response.json();
   }
 
+  async function paginate(path) {
+    const out = [];
+    let cursor = "";
+    do {
+      const page = await api(`${path}?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`);
+      out.push(...(page.data || []));
+      cursor = page.nextCursor || "";
+    } while (cursor && out.length < 1000);
+    return out;
+  }
+
   return {
-    async listWorkflows() {
-      const out = [];
-      let cursor = "";
-      do {
-        const page = await api(`/workflows?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`);
-        out.push(...(page.data || []));
-        cursor = page.nextCursor || "";
-      } while (cursor && out.length < 1000);
-      return out;
+    listWorkflows() {
+      return paginate("/workflows");
     },
 
     getWorkflow(id) {
       return api(`/workflows/${encodeURIComponent(id)}`);
+    },
+
+    // Une clé API présentée par quelqu'un qui veut administrer le portail :
+    // valide si n8n l'accepte pour lire les workflows.
+    async checkApiKey(key) {
+      if (!key) return false;
+      const response = await request("/workflows?limit=1", { key: String(key) });
+      if (response.status === 403) {
+        throw new N8nError("Clé API n8n valide, mais sans le droit de lire les workflows.", 403);
+      }
+      return response.ok;
+    },
+
+    // Credential « Header Auth » qui porte le secret du portail. Retrouvé par
+    // son identifiant connu, sinon par son nom, sinon créé. Son usage par un
+    // nœud HTTP Request est interdit : il ne sert qu'à vérifier les appels.
+    async ensureCredential(knownId) {
+      if (!webhookSecret) return null;
+      const all = await paginate("/credentials");
+      const mine = all.filter((c) => c.type === HEADER_AUTH_TYPE);
+      const found = mine.find((c) => String(c.id) === String(knownId)) || mine.find((c) => c.name === CREDENTIAL_NAME);
+      if (found) return String(found.id);
+      const created = await api("/credentials", {
+        method: "POST",
+        body: {
+          name: CREDENTIAL_NAME,
+          type: HEADER_AUTH_TYPE,
+          data: { name: SECRET_HEADER, value: webhookSecret, allowedHttpRequestDomains: "none" },
+        },
+      });
+      return String(created.id);
     },
 
     async runWebhook({ path, inputs, context }) {
@@ -159,7 +216,11 @@ export function createN8nClient({ baseUrl, apiKeyFile, fetchImpl = fetch, runTim
       try {
         response = await fetchImpl(`${baseUrl}/webhook/${path.split("/").map(encodeURIComponent).join("/")}`, {
           method: "POST",
-          headers: { "content-type": "application/json", accept: "application/json, text/plain;q=0.9" },
+          headers: {
+            "content-type": "application/json",
+            accept: "application/json, text/plain;q=0.9",
+            ...(webhookSecret ? { [SECRET_HEADER.toLowerCase()]: webhookSecret } : {}),
+          },
           body: JSON.stringify({ ...inputs, [CONTEXT_KEY]: context }),
           signal: AbortSignal.timeout(runTimeoutMs),
         });
@@ -180,6 +241,9 @@ export function createN8nClient({ baseUrl, apiKeyFile, fetchImpl = fetch, runTim
       if (body === null || typeof body !== "object") body = { message: String(body) };
       if (response.status === 404) {
         throw new N8nError("Ce workflow n'est pas publié dans n8n : son webhook de production ne répond pas.", 502);
+      }
+      if (response.status === 401 || response.status === 403) {
+        throw new N8nError("Le webhook refuse le portail : son credential ne porte plus le secret du portail.", 502, text.slice(0, 200));
       }
       if (!response.ok) {
         const detail = typeof body.message === "string" ? body.message.slice(0, 500) : text.slice(0, 500);

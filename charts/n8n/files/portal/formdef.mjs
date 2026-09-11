@@ -162,13 +162,17 @@ export function pickResult(formdef, body) {
   return out;
 }
 
-// Vue destinataire d'une action : le formulaire, sans rien de l'implémentation.
+// Vue destinataire d'une action : le formulaire et ce qu'elle fera du
+// document (accès demandé, écriture du résultat), sans rien de
+// l'implémentation (workflow, chemin du webhook).
 export function publicAction(key, action) {
   return {
     key,
     title: action.formdef.title,
     description: action.formdef.description || "",
     icon: action.icon || "",
+    gristAccess: action.gristAccess || "none",
+    writeBack: action.writeBack || null,
     formdef: action.formdef,
   };
 }
