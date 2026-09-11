@@ -35,10 +35,24 @@ test("un jeton fabriqué est refusé : Grist ne l'a pas émis", async () => {
   await assert.rejects(verify({ token: forged, baseUrl: baseFor() }), /Grist refuse ce jeton/);
 });
 
-test("jeton d'un autre document, expiré ou sans utilisateur : refusé sans appeler Grist", async () => {
+// Grist donne au widget l'adresse du document avec son identifiant d'URL
+// (court) et signe le jeton avec l'identifiant complet (constaté sur
+// grist.numerique.gouv.fr : 5h9vnuxrxjZF / 5h9vnuxrxjZFjm1BkiwqSz).
+test("le document retenu est celui du jeton signé, pas celui de l'adresse", async () => {
+  const full = `${DOC}jm1BkiwqSz`;
+  const token = tokenFor(42, full);
+  const grist = fakeGrist(new Set([token]));
+  const verify = createIdentityVerifier({ allowedOrigins: [GRIST], fetchImpl: grist.fetchImpl });
+  assert.equal((await verify({ token, baseUrl: baseFor(DOC) })).docId, full);
+  // Un jeton d'un autre document présenté ici reste un accès à cet autre document.
+  const other = tokenFor(42, "docAutre0002");
+  const verify2 = createIdentityVerifier({ allowedOrigins: [GRIST], fetchImpl: fakeGrist(new Set([other])).fetchImpl });
+  assert.equal((await verify2({ token: other, baseUrl: baseFor(DOC) })).docId, "docAutre0002");
+});
+
+test("jeton expiré ou sans utilisateur : refusé sans appeler Grist", async () => {
   const grist = fakeGrist(new Set());
   const verify = createIdentityVerifier({ allowedOrigins: [GRIST], fetchImpl: grist.fetchImpl });
-  await assert.rejects(verify({ token: tokenFor(42, "docAutre0002"), baseUrl: baseFor() }), /ne correspond pas/);
   await assert.rejects(verify({ token: tokenFor(42, DOC, { exp: 1 }), baseUrl: baseFor() }), /expiré/);
   await assert.rejects(verify({ token: jwt({ docId: DOC, exp: 9999999999 }), baseUrl: baseFor() }), /aucun utilisateur/);
   assert.equal(grist.calls.length, 0);

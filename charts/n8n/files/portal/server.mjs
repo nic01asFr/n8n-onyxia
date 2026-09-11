@@ -341,7 +341,8 @@ export function createPortal({ config, store, verifyIdentity, n8n, now = Date.no
         await route(req, res);
         return;
       }
-      if (req.method === "GET" && (await serveStatic(res, url.pathname))) return;
+      // HEAD comme GET : sondes et proxys vérifient une page sans la lire.
+      if ((req.method === "GET" || req.method === "HEAD") && (await serveStatic(res, url.pathname))) return;
       throw new HttpError(404, "Page introuvable.");
     } catch (error) {
       const known = error instanceof HttpError || error instanceof IdentityError || error instanceof N8nError;
@@ -364,7 +365,7 @@ export function configFromEnv(env = process.env) {
     storeFile: env.PORTAL_STORE_FILE || "/home/node/.n8n/onyxia/portail.json",
     adminToken: env.PORTAL_ADMIN_TOKEN || "",
     gristOrigins: list(env.PORTAL_GRIST_ORIGINS || "https://grist.numerique.gouv.fr,https://docs.getgrist.com"),
-    pluginUrl: env.PORTAL_GRIST_PLUGIN_URL || "https://docs.getgrist.com/grist-plugin-api.js",
+    pluginUrl: env.PORTAL_GRIST_PLUGIN_URL || "https://grist.numerique.gouv.fr/grist-plugin-api.js",
     runTimeoutMs: Number(env.PORTAL_RUN_TIMEOUT_MS || 120000),
     publicDir: env.PORTAL_PUBLIC_DIR || HERE,
   };

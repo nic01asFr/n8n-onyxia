@@ -81,9 +81,11 @@ export function createIdentityVerifier({ allowedOrigins, fetchImpl = fetch, now 
     if (!payload) throw new IdentityError("Jeton Grist illisible.");
     const userId = userIdFrom(payload);
     if (!userId) throw new IdentityError("Le jeton Grist ne désigne aucun utilisateur.");
-    if (payload.docId && payload.docId !== docId) {
-      throw new IdentityError("Le jeton Grist ne correspond pas à ce document.");
-    }
+    // L'adresse donne l'identifiant d'URL du document (court, ou nom choisi par
+    // son propriétaire) ; le jeton signé porte l'identifiant complet. C'est
+    // lui qui fait foi : l'adresse ne sert qu'à faire vérifier le jeton. Un
+    // jeton du document A présenté à l'adresse de B reste donc un accès à A.
+    const canonicalDocId = typeof payload.docId === "string" && payload.docId ? payload.docId : docId;
     const expiresAt = Number(payload.exp) * 1000;
     if (!Number.isFinite(expiresAt) || expiresAt <= now()) {
       throw new IdentityError("Jeton Grist expiré : rechargez la page.");
@@ -110,7 +112,7 @@ export function createIdentityVerifier({ allowedOrigins, fetchImpl = fetch, now 
       throw new IdentityError(`Grist a répondu ${response.status} à la vérification du jeton.`, 502);
     }
 
-    const identity = Object.freeze({ userId, docId, origin, readOnly: Boolean(payload.readOnly) });
+    const identity = Object.freeze({ userId, docId: canonicalDocId, origin, readOnly: Boolean(payload.readOnly) });
     purge();
     cache.set(key, { identity, expiresAt });
     return identity;

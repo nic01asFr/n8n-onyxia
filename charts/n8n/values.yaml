@@ -118,8 +118,10 @@ portal:
   # Hôtes Grist dont le portail accepte les documents, et qui peuvent
   # l'intégrer en iframe.
   gristOrigins: "https://grist.numerique.gouv.fr,https://docs.getgrist.com"
-  # API des widgets Grist, chargée par la page du portail.
-  gristPluginUrl: "https://docs.getgrist.com/grist-plugin-api.js"
+  # API des widgets Grist, chargée par la page du portail. Celle de
+  # docs.getgrist.com est une version de développement pleine d'eval(), que la
+  # politique de sécurité du portail bloque : window.grist n'était jamais défini.
+  gristPluginUrl: "https://grist.numerique.gouv.fr/grist-plugin-api.js"
   # Durée maximale d'une exécution avant abandon.
   runTimeoutSeconds: 120
   resources:
