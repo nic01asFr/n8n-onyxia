@@ -24,6 +24,7 @@ spec:
       annotations:
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
         checksum/provision: {{ include (print $.Template.BasePath "/configmap-provision.yaml") . | sha256sum }}
+        checksum/portal: {{ include (print $.Template.BasePath "/configmap-portal.yaml") . | sha256sum }}
     spec:
       # Aucun conteneur ne parle à l'API Kubernetes.
       automountServiceAccountToken: false
@@ -191,8 +192,9 @@ spec:
               value: {{ .Values.owner.firstName | quote }}
             - name: OWNER_LAST_NAME
               value: {{ .Values.owner.lastName | quote }}
+            # Le MCP et le portail lisent tous deux cette clé.
             - name: CREATE_API_KEY
-              value: {{ .Values.mcp.enabled | quote }}
+              value: {{ or .Values.mcp.enabled .Values.portal.enabled | quote }}
             - name: API_KEY_LABEL
               value: {{ .Values.provisioning.apiKeyLabel | quote }}
             - name: API_KEY_SCOPE_PREFIXES
@@ -299,6 +301,63 @@ spec:
             - name: mcp-cache
               mountPath: /mcp-cache
         {{- end }}
+        {{- if .Values.portal.enabled }}
+        # Portail d'actions : vérifie le jeton Grist du lecteur, puis appelle
+        # le webhook du workflow sur localhost. Voir files/portal/server.mjs.
+        - name: portal
+          image: "{{ .Values.service.image.repository }}:{{ .Values.service.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.service.image.pullPolicy }}
+          command: ["node", "/portal/server.mjs"]
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: portal
+              containerPort: {{ .Values.networking.portal.port }}
+              protocol: TCP
+          env:
+            - name: PORTAL_PORT
+              value: {{ .Values.networking.portal.port | quote }}
+            - name: PORTAL_PUBLIC_DIR
+              value: /portal
+            - name: N8N_URL
+              value: "http://127.0.0.1:5678"
+            - name: API_KEY_FILE
+              value: "/home/node/.n8n/{{ $apiKeyRelPath }}"
+            - name: PORTAL_STORE_FILE
+              value: /home/node/.n8n/onyxia/portail.json
+            - name: PORTAL_GRIST_ORIGINS
+              value: {{ .Values.portal.gristOrigins | quote }}
+            - name: PORTAL_GRIST_PLUGIN_URL
+              value: {{ .Values.portal.gristPluginUrl | quote }}
+            - name: PORTAL_RUN_TIMEOUT_MS
+              value: {{ mul .Values.portal.runTimeoutSeconds 1000 | quote }}
+            - name: PORTAL_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: PORTAL_ADMIN_TOKEN
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: portal
+            periodSeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: portal
+            periodSeconds: 10
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.portal.resources | nindent 12 }}
+          volumeMounts:
+            # Écriture de portail.json ; lecture de la clé API.
+            - name: data
+              mountPath: /home/node/.n8n
+            - name: portal
+              mountPath: /portal
+              readOnly: true
+        {{- end }}
       volumes:
         - name: data
           {{- if .Values.persistence.enabled }}
@@ -311,6 +370,11 @@ spec:
         - name: provision
           configMap:
             name: {{ $fullName }}-provision
+        {{- end }}
+        {{- if .Values.portal.enabled }}
+        - name: portal
+          configMap:
+            name: {{ $fullName }}-portal
         {{- end }}
         {{- if .Values.mcp.enabled }}
         # Base de documentation des nœuds (environ 65 Mo), recopiée au démarrage.

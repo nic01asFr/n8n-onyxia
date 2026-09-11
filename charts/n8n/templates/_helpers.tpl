@@ -79,6 +79,14 @@
 {{- end -}}
 
 {{/*
+  Jeton d'administration du portail : même principe que le jeton MCP, avec un
+  suffixe distinct pour que l'un ne donne pas l'autre.
+*/}}
+{{- define "n8n.portalToken" -}}
+{{- .Values.portal.adminToken | default (printf "%s:n8n-portail" (include "n8n.ownerPassword" .) | sha256sum | trunc 48) -}}
+{{- end -}}
+
+{{/*
   Source PostgreSQL retenue :
     « external »  : database.type = postgresdb ;
     « discovery » : discovery.postgresql et un service PostgreSQL Onyxia trouvé ;

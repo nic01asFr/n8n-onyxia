@@ -1,0 +1,12 @@
+{{- if .Values.portal.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "library-chart.fullname" . }}-portal
+  labels:
+    {{- include "library-chart.labels" . | nindent 4 }}
+# Code et page du portail, exécutés par le Node de l'image n8n : aucune image
+# supplémentaire à construire ni à tirer.
+data:
+  {{- (.Files.Glob "files/portal/*").AsConfig | nindent 2 }}
+{{- end }}

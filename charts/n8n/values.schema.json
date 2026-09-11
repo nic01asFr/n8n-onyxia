@@ -159,6 +159,39 @@
         }
       }
     },
+    "portal": {
+      "type": "object",
+      "title": "Action portal",
+      "description": "Turn chosen workflows into guided forms that people run from a Grist document",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "title": "Enable the action portal",
+          "description": "Adds a Grist custom widget, served by this service, with its own URL and admin token shown in the service notes.",
+          "default": false
+        },
+        "hostname": {
+          "type": "string",
+          "title": "Portal hostname",
+          "default": "",
+          "x-onyxia": {
+            "hidden": true,
+            "overwriteDefaultWith": "{{project.id}}-n8n-portail-{{k8s.randomSubdomain}}.{{k8s.domain}}"
+          }
+        },
+        "gristOrigins": {
+          "type": "string",
+          "title": "Allowed Grist sites",
+          "description": "Comma-separated origins whose documents may use the portal and embed it.",
+          "default": "https://grist.numerique.gouv.fr,https://docs.getgrist.com",
+          "hidden": {
+            "value": false,
+            "path": "enabled",
+            "isPathRelative": true
+          }
+        }
+      }
+    },
     "n8n": {
       "type": "object",
       "title": "n8n",

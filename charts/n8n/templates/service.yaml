@@ -17,5 +17,11 @@ spec:
       targetPort: mcp
       protocol: TCP
     {{- end }}
+    {{- if .Values.portal.enabled }}
+    - name: portal
+      port: {{ .Values.networking.portal.port }}
+      targetPort: portal
+      protocol: TCP
+    {{- end }}
   selector:
     {{- include "library-chart.selectorLabels" . | nindent 4 }}

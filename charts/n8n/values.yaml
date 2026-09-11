@@ -103,6 +103,33 @@ mcp:
       cpu: 1000m
       memory: 1Gi
 
+# --- Portail d'actions -------------------------------------------------------------
+# Transforme des workflows choisis en actions guidées, lancées depuis un widget
+# Grist par les personnes ayant accès au document. Seule porte publique vers
+# les workflows : il vérifie le jeton Grist du lecteur et appelle les webhooks
+# en localhost. Code : files/portal/.
+portal:
+  enabled: false
+  # Hôte public du portail. Onyxia le renseigne.
+  hostname: ""
+  # Jeton d'administration (mode « Configurer »). Vide : dérivé du mot de passe
+  # owner, stable et affiché dans les notes.
+  adminToken: ""
+  # Hôtes Grist dont le portail accepte les documents, et qui peuvent
+  # l'intégrer en iframe.
+  gristOrigins: "https://grist.numerique.gouv.fr,https://docs.getgrist.com"
+  # API des widgets Grist, chargée par la page du portail.
+  gristPluginUrl: "https://docs.getgrist.com/grist-plugin-api.js"
+  # Durée maximale d'une exécution avant abandon.
+  runTimeoutSeconds: 120
+  resources:
+    requests:
+      cpu: 10m
+      memory: 48Mi
+    limits:
+      cpu: 300m
+      memory: 128Mi
+
 # --- Base de données -----------------------------------------------------------------
 database:
   # sqlite : sur le volume, suffisant pour un usage personnel ou d'équipe.
@@ -144,6 +171,8 @@ networking:
     port: 5678
   mcp:
     port: 3000
+  portal:
+    port: 3100
 
 ingress:
   enabled: true

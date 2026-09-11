@@ -56,6 +56,26 @@ claude mcp add n8n --transport http \
 La clé API n8n du serveur MCP est créée automatiquement, avec des droits
 limités aux workflows, exécutions, étiquettes, tables, credentials et dossiers.
 {{- end }}
+{{- if .Values.portal.enabled }}
+
+### Mettre des workflows à disposition (portail d'actions)
+
+Dans un document Grist, ajoutez un widget personnalisé avec l'adresse
+ci-dessous et un accès complet au document :
+
+```
+https://{{ .Values.portal.hostname }}/
+```
+
+Jeton d'administration, pour le bouton « Configurer » :
+
+```
+{{ include "n8n.portalToken" . }}
+```
+
+Le premier compte Grist qui l'utilise devient propriétaire du portail. Un
+workflow devient une action par son déclencheur Webhook (POST), une fois publié.
+{{- end }}
 
 ### Bon à savoir
 
@@ -112,6 +132,26 @@ claude mcp add n8n --transport http \
 
 The MCP server's n8n API key is created automatically, scoped to workflows,
 executions, tags, data tables, credentials and folders.
+{{- end }}
+{{- if .Values.portal.enabled }}
+
+### Share workflows as actions (action portal)
+
+In a Grist document, add a custom widget with the address below and full
+document access:
+
+```
+https://{{ .Values.portal.hostname }}/
+```
+
+Admin token, for the "Configurer" button:
+
+```
+{{ include "n8n.portalToken" . }}
+```
+
+The first Grist account that uses it becomes the portal owner. A workflow
+becomes an action through its Webhook trigger (POST), once published.
 {{- end }}
 
 ### Good to know
