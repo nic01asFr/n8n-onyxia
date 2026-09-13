@@ -190,7 +190,7 @@ export function createPortal({ config, store, verifyIdentity, n8n, now = Date.no
   function requireOwner(req, identity) {
     const session = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
     if (!sessions.valid(session, identity)) {
-      throw new HttpError(401, "Session expirée ou absente : reconnectez-vous avec une clé API n8n.");
+      throw new HttpError(401, "Session expirée : reconnectez-vous à n8n.");
     }
     if (!store.isOwner(identity)) throw new HttpError(403, "Ce portail est associé à un autre compte Grist.");
   }
