@@ -233,6 +233,23 @@ test("l'accès délégué au document suit l'action et les droits réels du lect
   assert.equal(p.n8n.runs.at(-1).body._portail.grist.access, "read");
 });
 
+test("l'essai depuis l'éditeur lance le workflow et rend tout son retour, au propriétaire seulement", async (t) => {
+  const p = await startPortal();
+  t.after(p.close);
+  const { json: { session } } = await p.login();
+  const state = await p.call("GET", "/api/admin/state", { session });
+  assert.deepEqual(state.json.workflows[0].inputs.sort(), ["consigne", "url"]);
+  const draft = await p.call("POST", "/api/admin/draft", { session, body: { workflowId: "wf1", node: "Webhook" } });
+  const body = { workflowId: "wf1", node: "Webhook", formdef: draft.json.formdef, inputs: { url: "https://a" } };
+  assert.equal((await p.call("POST", "/api/admin/try", { as: "collegue", body })).status, 401);
+  const tried = await p.call("POST", "/api/admin/try", { session, body });
+  assert.equal(tried.status, 200, JSON.stringify(tried.json));
+  assert.deepEqual(tried.json.keys.sort(), ["interne", "resume", "success"]);
+  const sent = p.n8n.runs.at(-1).body;
+  assert.equal(sent._portail.test, true);
+  assert.equal(sent.url, "https://a");
+});
+
 test("l'écriture du résultat est validée à l'enregistrement et annoncée au widget", async (t) => {
   const p = await startPortal();
   t.after(p.close);

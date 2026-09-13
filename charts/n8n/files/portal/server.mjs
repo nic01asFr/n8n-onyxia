@@ -42,7 +42,6 @@ const STATIC = {
   "/portal.css": ["portal.css", "text/css; charset=utf-8"],
   "/engine.js": ["engine.js", "text/javascript; charset=utf-8"],
   "/types.js": ["types.js", "text/javascript; charset=utf-8"],
-  "/dsfr-like.css": ["dsfr-like.css", "text/css; charset=utf-8"],
 };
 
 class HttpError extends Error {
@@ -358,6 +357,8 @@ export function createPortal({ config, store, verifyIdentity, n8n, now = Date.no
         published: isPublished(wf),
         tags: (wf.tags || []).map((t) => t.name),
         triggers: webhookTriggers(wf, { credentialId: credential }),
+        // Champs lus par le workflow : l'éditeur les propose en un clic.
+        inputs: inputNamesFromWorkflow(wf),
         exposedAs: exposed.get(String(wf.id)) || [],
       }));
       const access = store.access(identity.origin, identity.docId);
@@ -411,6 +412,47 @@ export function createPortal({ config, store, verifyIdentity, n8n, now = Date.no
         ...settings,
       });
       send(res, 200, { key, action: saved, published: isPublished(workflow) });
+    },
+
+    // Essai depuis l'éditeur : le formulaire en cours de réglage, pas encore
+    // enregistré, lancé pour de vrai. Le propriétaire voit tout le retour du
+    // workflow, pour choisir ce que verront les demandeurs.
+    "POST /api/admin/try": async (req, res) => {
+      const identity = await identify(req);
+      requireOwner(req, identity);
+      if (!runLimiter(`${identity.origin}#${identity.userId}`)) {
+        throw new HttpError(429, "Trop de lancements en une minute : patientez un instant.");
+      }
+      const body = await readJson(req);
+      const formdef = body.formdef;
+      const errors = validateActionFormDef(formdef, formdef?.target?.action);
+      if (errors.length) throw new HttpError(422, "Formulaire invalide.", errors);
+      let inputs;
+      try {
+        inputs = checkInputs(formdef, body.inputs);
+      } catch (error) {
+        throw new HttpError(422, error.message);
+      }
+      const { workflow, trigger } = await findTrigger(String(body.workflowId || ""), String(body.node || ""));
+      if (!trigger) throw new HttpError(404, "Déclencheur webhook introuvable dans ce workflow.");
+      if (trigger.blocker) throw new HttpError(409, `Workflow non exposable : ${trigger.blocker}.`);
+      if (!isPublished(workflow)) throw new HttpError(409, "Le workflow n'est pas publié dans n8n.");
+      const runId = randomUUID();
+      const started = now();
+      log(`essai ${runId} workflow=${workflow.id} user=${identity.userId}`);
+      const result = await n8n.runWebhook({
+        path: trigger.path,
+        inputs,
+        context: {
+          runId,
+          action: String(formdef.target.action),
+          test: true,
+          requester: { gristUserId: identity.userId, origin: identity.origin },
+          document: { docId: identity.docId, origin: identity.origin },
+          at: new Date(now()).toISOString(),
+        },
+      });
+      send(res, 200, { runId, durationMs: now() - started, result, keys: Object.keys(result) });
     },
 
     "DELETE /api/admin/action": async (req, res) => {

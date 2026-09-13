@@ -20,12 +20,22 @@ const PORT = Number(process.env.PORT || 3199);
 const ORIGIN = "https://grist.example.org";
 const DOC = "docDemo00001";
 
+// ?theme=dark simule un Grist en thème sombre.
 const STUB = `window.grist = {
   ready: function () {},
+  onThemeChange: function (cb) {
+    var theme = new URLSearchParams(location.search).get('theme');
+    if (theme) setTimeout(function () { cb({ appearance: theme, name: 'GristDark', colors: {} }); }, 0);
+  },
   docApi: {
     getAccessToken: function () {
       var user = new URLSearchParams(location.search).get('user') || '10';
       return Promise.resolve({ token: 'dev-' + user, baseUrl: '${ORIGIN}/o/docs/api/docs/${DOC}', ttlMsecs: 300000 });
+    },
+    getDocName: function () { return Promise.resolve('Bibliothèque de workflows (démo)'); },
+    listTables: function () { return Promise.resolve(['Table1', 'Resultats']); },
+    fetchTable: function (t) {
+      return Promise.resolve(t === 'Resultats' ? { id: [], manualSort: [], Resume: [], Acces: [], Date: [] } : { id: [], A: [] });
     },
     applyUserActions: function (actions) {
       console.log('[faux Grist] applyUserActions', JSON.stringify(actions));
