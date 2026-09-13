@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createPortal, configFromEnv } from "../../charts/n8n/files/portal/server.mjs";
+import { createPortal, configFromEnv, sessionKey } from "../../charts/n8n/files/portal/server.mjs";
 import { createIdentityVerifier } from "../../charts/n8n/files/portal/identity.mjs";
 import { createN8nClient } from "../../charts/n8n/files/portal/n8n.mjs";
 import { openStore } from "../../charts/n8n/files/portal/store.mjs";
@@ -231,6 +231,13 @@ test("l'accès délégué au document suit l'action et les droits réels du lect
   // Un lecteur en lecture seule ne reçoit qu'un accès en lecture.
   await p.call("POST", "/api/run", { as: "collegue", body: { action: key, inputs, delegated: { token: p.tokens.collegueReadOnly } } });
   assert.equal(p.n8n.runs.at(-1).body._portail.grist.access, "read");
+});
+
+test("la clé des sessions tient d'un démarrage à l'autre avec le même secret", () => {
+  assert.deepEqual(sessionKey(SECRET), sessionKey(SECRET));
+  assert.notDeepEqual(sessionKey(SECRET), sessionKey(`${SECRET}-autre`));
+  assert.notDeepEqual(sessionKey(SECRET), Buffer.from(SECRET));
+  assert.notDeepEqual(sessionKey(""), sessionKey(""));
 });
 
 test("l'essai depuis l'éditeur lance le workflow et rend tout son retour, au propriétaire seulement", async (t) => {

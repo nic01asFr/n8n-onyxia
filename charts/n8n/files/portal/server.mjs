@@ -99,8 +99,16 @@ function sameSecret(given, expected) {
 
 // Session du mode « Configurer » : signée, courte, liée au compte Grist qui l'a
 // ouverte. La clé API n8n ne sert qu'une fois, à l'ouverture ; elle ne reste ni
-// dans le navigateur ni sur le serveur. Le secret de signature vit en mémoire :
-// un redémarrage ferme les sessions, ce qui ne coûte qu'une reconnexion.
+// dans le navigateur ni sur le serveur. La clé de signature est dérivée du
+// secret du portail (Secret Kubernetes, stable d'une mise à jour à l'autre) :
+// une session d'une heure survit à un redéploiement. Sans ce secret, elle est
+// tirée au démarrage.
+export function sessionKey(webhookSecret) {
+  return webhookSecret
+    ? createHmac("sha256", String(webhookSecret)).update("portail:sessions:v1").digest()
+    : randomBytes(32);
+}
+
 function createSessions({ now = Date.now, secret = randomBytes(32) }) {
   const sign = (payload) => createHmac("sha256", secret).update(payload).digest("base64url");
   return {
@@ -162,7 +170,7 @@ function checkWriteBack(writeBack) {
   return { tableId: writeBack.tableId, fields: { ...fields } };
 }
 
-export function createPortal({ config, store, verifyIdentity, n8n, now = Date.now, sessions = createSessions({ now }) }) {
+export function createPortal({ config, store, verifyIdentity, n8n, now = Date.now, sessions = createSessions({ now, secret: sessionKey(config.webhookSecret) }) }) {
   const headers = securityHeaders(config);
   const apiLimiter = createRateLimiter({ limit: 120, windowMs: 60000, now });
   const runLimiter = createRateLimiter({ limit: 20, windowMs: 60000, now });
