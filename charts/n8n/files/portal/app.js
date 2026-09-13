@@ -1479,8 +1479,14 @@
     });
   }
   window.grist.ready({ requiredAccess: 'full' });
+  function looksLikeDocId(name) {
+    return /^[A-Za-z0-9]{12,}$/.test(name) && /[0-9]/.test(name) && /[a-z]/.test(name) && /[A-Z]/.test(name);
+  }
   if (window.grist.docApi.getDocName) {
     window.grist.docApi.getDocName().then(function (name) {
+      // Selon les versions, Grist renvoie l'identifiant interne du document
+      // plutôt que son titre : on ne l'affiche pas.
+      if (!name || looksLikeDocId(name)) return;
       state.docName = name;
       var sub = root.querySelector('.brand__sub');
       if (sub) sub.textContent = name;
