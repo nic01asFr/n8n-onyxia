@@ -221,9 +221,29 @@ export function createPortal({ config, store, verifyIdentity, n8n, now = Date.no
     return { workflow, trigger };
   }
 
+  function grantedAccess(value) {
+    return GRIST_ACCESS.includes(value) ? value : "none";
+  }
+
   function actionSettings(body) {
-    const gristAccess = GRIST_ACCESS.includes(body.gristAccess) ? body.gristAccess : "none";
-    return { gristAccess, writeBack: checkWriteBack(body.writeBack) };
+    return { gristAccess: grantedAccess(body.gristAccess), writeBack: checkWriteBack(body.writeBack) };
+  }
+
+  // Accès délégué au document : un second jeton du même lecteur, pour le même
+  // document, que le workflow utilisera avec ses droits à lui.
+  async function delegatedAccess(req, identity, wanted, delegatedBody) {
+    if (grantedAccess(wanted) === "none") return null;
+    if (!delegatedBody?.token) throw new HttpError(422, "Cette action a besoin d'un accès au document.");
+    const delegated = await verifyIdentity({ token: delegatedBody.token, baseUrl: req.headers["x-grist-base"] });
+    if (delegated.userId !== identity.userId || delegated.docId !== identity.docId || delegated.origin !== identity.origin) {
+      throw new HttpError(403, "Le jeton d'accès au document ne correspond pas au lecteur.");
+    }
+    return {
+      baseUrl: delegated.docBase,
+      token: String(delegatedBody.token),
+      access: wanted === "write" && !delegated.readOnly ? "write" : "read",
+      expiresAt: new Date(delegated.expiresAt).toISOString(),
+    };
   }
 
   const routes = {
@@ -268,23 +288,7 @@ export function createPortal({ config, store, verifyIdentity, n8n, now = Date.no
         throw new HttpError(422, error.message);
       }
 
-      // Accès délégué au document : un second jeton du même lecteur, pour le
-      // même document, que le workflow utilisera avec ses droits à lui.
-      let grist = null;
-      const wanted = action.gristAccess || "none";
-      if (wanted !== "none") {
-        if (!body.delegated?.token) throw new HttpError(422, "Cette action a besoin d'un accès au document.");
-        const delegated = await verifyIdentity({ token: body.delegated.token, baseUrl: req.headers["x-grist-base"] });
-        if (delegated.userId !== identity.userId || delegated.docId !== identity.docId || delegated.origin !== identity.origin) {
-          throw new HttpError(403, "Le jeton d'accès au document ne correspond pas au lecteur.");
-        }
-        grist = {
-          baseUrl: delegated.docBase,
-          token: String(body.delegated.token),
-          access: wanted === "write" && !delegated.readOnly ? "write" : "read",
-          expiresAt: new Date(delegated.expiresAt).toISOString(),
-        };
-      }
+      const grist = await delegatedAccess(req, identity, action.gristAccess, body.delegated);
 
       const { workflow, trigger } = await findTrigger(action.workflowId, action.node);
       if (!trigger || trigger.blocker) {
@@ -437,9 +441,10 @@ export function createPortal({ config, store, verifyIdentity, n8n, now = Date.no
       if (!trigger) throw new HttpError(404, "Déclencheur webhook introuvable dans ce workflow.");
       if (trigger.blocker) throw new HttpError(409, `Workflow non exposable : ${trigger.blocker}.`);
       if (!isPublished(workflow)) throw new HttpError(409, "Le workflow n'est pas publié dans n8n.");
+      const grist = await delegatedAccess(req, identity, body.gristAccess, body.delegated);
       const runId = randomUUID();
       const started = now();
-      log(`essai ${runId} workflow=${workflow.id} user=${identity.userId}`);
+      log(`essai ${runId} workflow=${workflow.id} user=${identity.userId}${grist ? ` grist=${grist.access}` : ""}`);
       const result = await n8n.runWebhook({
         path: trigger.path,
         inputs,
@@ -450,6 +455,7 @@ export function createPortal({ config, store, verifyIdentity, n8n, now = Date.no
           requester: { gristUserId: identity.userId, origin: identity.origin },
           document: { docId: identity.docId, origin: identity.origin },
           at: new Date(now()).toISOString(),
+          ...(grist ? { grist } : {}),
         },
       });
       send(res, 200, { runId, durationMs: now() - started, result, keys: Object.keys(result) });

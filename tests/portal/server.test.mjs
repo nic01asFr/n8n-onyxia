@@ -248,6 +248,21 @@ test("l'essai depuis l'éditeur lance le workflow et rend tout son retour, au pr
   const sent = p.n8n.runs.at(-1).body;
   assert.equal(sent._portail.test, true);
   assert.equal(sent.url, "https://a");
+  assert.equal(sent._portail.grist, undefined);
+
+  // L'accès au document réglé dans l'éditeur est essayé tel quel, avec le
+  // jeton du propriétaire et jamais celui d'un autre.
+  const needsToken = await p.call("POST", "/api/admin/try", { session, body: { ...body, gristAccess: "write" } });
+  assert.equal(needsToken.status, 422);
+  const stolen = await p.call("POST", "/api/admin/try", {
+    session, body: { ...body, gristAccess: "write", delegated: { token: p.tokens.collegueWrite } },
+  });
+  assert.equal(stolen.status, 403);
+  const withDoc = await p.call("POST", "/api/admin/try", {
+    session, body: { ...body, gristAccess: "write", delegated: { token: p.tokens.ownerWrite } },
+  });
+  assert.equal(withDoc.status, 200, JSON.stringify(withDoc.json));
+  assert.equal(p.n8n.runs.at(-1).body._portail.grist.access, "write");
 });
 
 test("l'écriture du résultat est validée à l'enregistrement et annoncée au widget", async (t) => {

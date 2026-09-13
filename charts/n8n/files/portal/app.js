@@ -1348,7 +1348,11 @@
           skipProbe: true,
           submit: function (data) {
             var stop = progress(previewResult);
-            return api('POST', 'api/admin/try', { workflowId: m.workflowId, node: m.node, formdef: fd, inputs: data }, true).then(function (r) {
+            return delegatedToken(m).then(function (delegated) {
+              var body = { workflowId: m.workflowId, node: m.node, formdef: fd, inputs: data, gristAccess: m.gristAccess };
+              if (delegated) body.delegated = delegated;
+              return api('POST', 'api/admin/try', body, true);
+            }).then(function (r) {
               stop();
               m.lastKeys = r.keys || [];
               m.lastResult = r.result || {};
