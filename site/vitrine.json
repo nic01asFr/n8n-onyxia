@@ -1,11 +1,12 @@
 {
   "nom": "n8n pour Onyxia",
-  "pitch": "Ton instance n8n sur SSPCloud, prête en deux minutes : éditeur de workflows, webhooks publics, et un serveur MCP pour que ton assistant IA construise les workflows avec toi.",
+  "pitch": "Ton instance n8n sur SSPCloud, prête en deux minutes : éditeur de workflows, webhooks publics, un serveur MCP pour que ton assistant IA construise les workflows avec toi, et un portail pour les confier à tes collègues depuis Grist.",
   "couleur": "#EA4B71",
   "depot": "https://github.com/nic01asFr/n8n-onyxia",
   "tags": [
     "n8n",
     "MCP",
+    "Grist",
     "Onyxia",
     "SSPCloud",
     "Helm"
@@ -45,6 +46,43 @@
         "titre": "Prototyper avec un assistant",
         "texte": "Tu décris le besoin en langage naturel ; l'assistant cherche les bons nœuds, écrit le workflow et lit les exécutions en échec.",
         "pourquoi": "Le serveur MCP connaît le catalogue complet des nœuds n8n."
+      },
+      {
+        "titre": "Outiller une équipe qui n'ouvre pas n8n",
+        "texte": "Analyser une page, résumer un texte, enrichir une liste : tes collègues remplissent un formulaire dans leur document Grist, le workflow fait le reste.",
+        "pourquoi": "Le résultat s'ajoute au document partagé, à côté des données de l'équipe."
+      }
+    ]
+  },
+  "portail": {
+    "titre": "Tes workflows en formulaires dans Grist",
+    "accroche": "Un workflow rend service à qui sait l'ouvrir. Le portail d'actions le met à la portée de tes collègues : tu choisis les workflows, tu dessines leur formulaire, et ils les lancent depuis un document Grist, sans compte n8n. Chacun agit avec ses propres droits sur le document.",
+    "etapes": [
+      {
+        "titre": "Tu configures",
+        "texte": "Dans le widget, tu te connectes à ton n8n avec le jeton MCP ou ton compte, puis tu choisis un workflow à déclencheur Webhook. L'éditeur règle son formulaire : étapes, champs, choix, conditions. L'aperçu lance vraiment le workflow et propose ses clés de retour en un clic."
+      },
+      {
+        "titre": "Tu ouvres l'action dans un document",
+        "texte": "Une action n'apparaît que dans les documents où tu l'ouvres, par défaut aux seuls comptes Grist connectés. Tu décides si le workflow peut lire ou modifier le document, et dans quelle table ranger le résultat."
+      },
+      {
+        "titre": "Tes collègues la lancent",
+        "texte": "Un formulaire guidé, ce qui sera transmis dit avant l'envoi, puis le résultat mis en forme : statut, texte, liste, lien. La ligne s'ajoute à la table choisie, avec les droits de la personne."
+      }
+    ],
+    "garanties": [
+      {
+        "titre": "Seule porte vers le workflow",
+        "texte": "Le webhook exige un secret que seul le portail détient : un appel direct est refusé."
+      },
+      {
+        "titre": "Identité confirmée par Grist",
+        "texte": "Avant tout lancement, le portail fait vérifier par Grist le jeton de la personne et le document d'où elle agit."
+      },
+      {
+        "titre": "Ses droits, pas les tiens",
+        "texte": "Le workflow reçoit un jeton du demandeur, valable quelques minutes et pour ce seul document."
       }
     ]
   },
@@ -75,6 +113,11 @@
       "pourQui": "Pour qui : les utilisateurs de Claude Code, Claude Desktop ou Cursor."
     },
     {
+      "titre": "Workflows en formulaires dans Grist",
+      "texte": "Choisis des workflows, dessine leur formulaire dans un éditeur visuel : tes collègues les lancent depuis un document Grist et le résultat s'enregistre dans une table.",
+      "pourQui": "Pour qui : les équipes qui partagent un traitement avec des personnes qui n'ouvrent pas n8n."
+    },
+    {
       "titre": "PostgreSQL Onyxia découvert automatiquement",
       "texte": "Coche une case : si ton projet héberge un service PostgreSQL, n8n y range ses données au lieu de SQLite.",
       "pourQui": "Pour qui : les équipes qui partagent une instance."
@@ -95,15 +138,20 @@
   },
   "stack": {
     "titre": "Stack ouverte",
-    "texte": "Tout est public et versionné : le chart, le script d'installation, le code du provisioning.",
+    "texte": "Tout est public et versionné : le chart, le script d'installation, le code du provisioning et du portail.",
     "items": [
       "n8n (Sustainable Use License)",
       "czlonkowski/n8n-mcp (MIT)",
+      "moteur de formulaires grist_forms (MIT)",
       "library-chart InseeFrLab",
       "Helm, Kubernetes, Onyxia"
     ]
   },
   "journal": [
+    {
+      "version": "chart 1.1.0",
+      "texte": "Portail d'actions en option : les workflows choisis deviennent des formulaires lancés depuis Grist, avec éditeur visuel, essai réel, identité vérifiée par Grist et résultat enregistré dans le document. Éprouvé de bout en bout sur grist.numerique.gouv.fr."
+    },
     {
       "version": "chart 1.0.2",
       "texte": "Migration des instances 0.x en une commande (MIGRATE=true) : sauvegarde, passage par la dernière n8n 1.x pour garder le propriétaire des workflows, reprise du volume, des hôtes et de l’ancienne clé API."

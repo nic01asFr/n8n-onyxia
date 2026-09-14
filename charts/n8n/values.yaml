@@ -112,8 +112,9 @@ portal:
   enabled: false
   # Hôte public du portail. Onyxia le renseigne.
   hostname: ""
-  # Le mode « Configurer » s'ouvre avec le compte n8n du service (ou une clé
-  # API), par le compte Grist propriétaire : aucun jeton à régler ici. Le secret
+  # Le mode « Configurer » s'ouvre avec le jeton du serveur MCP, le compte n8n
+  # du service ou une clé API, par le compte Grist propriétaire : aucun jeton à
+  # régler ici. Le secret
   # joint aux webhooks est tiré au sort et gardé dans le Secret.
   # Hôtes Grist dont le portail accepte les documents, et qui peuvent
   # l'intégrer en iframe.

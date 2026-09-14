@@ -151,6 +151,62 @@ function blocMcp() {
   </section>`;
 }
 
+/**
+ * Schéma du portail : le document Grist, le portail qui décide, n8n qui
+ * calcule, puis le résultat rangé dans Grist. Les arêtes disent ce qui passe.
+ */
+function schemaPortail() {
+  // Arêtes de 64 px : la place d'un libellé entre deux nœuds.
+  const noeuds = [
+    { x: 16, titre: "Document Grist", sous: "formulaire", classe: "nd nd-grist" },
+    { x: 220, titre: "Portail", sous: "vérifie, décide", classe: "nd nd-accent" },
+    { x: 424, titre: "Webhook n8n", sous: "calcule", classe: "nd" },
+    { x: 628, titre: "Table Grist", sous: "garde la trace", classe: "nd nd-grist" },
+  ];
+  const aretes = ["jeton", "secret", "retour"];
+  const liens = noeuds.slice(0, -1).map((n, i) => `
+      <path d="M${n.x + 140} 64 L ${n.x + 204} 64" class="edge"/>
+      <text x="${n.x + 172}" y="54" class="ed-t">${aretes[i]}</text>`).join("");
+  const cartes = noeuds.map((n) => `
+      <g transform="translate(${n.x} 28)">
+        <rect width="140" height="72" rx="10" class="${n.classe}"/>
+        <circle cx="0" cy="36" r="5" class="port"/><circle cx="140" cy="36" r="5" class="port"/>
+        <text x="16" y="32" class="nd-t">${echapper(n.titre)}</text>
+        <text x="16" y="52" class="nd-s">${echapper(n.sous)}</text>
+      </g>`).join("");
+  const resume = "Le portail est la seule porte : il fait vérifier la personne par Grist, appelle le webhook avec son secret, et le résultat est rangé dans le document avec les droits du demandeur.";
+  return `<figure class="apercu schema">
+      <div class="canvas">
+        <svg viewBox="0 0 784 128" role="img" aria-label="${echapper(resume)}">
+          ${liens}${cartes}
+        </svg>
+      </div>
+      <figcaption>${echapper(resume)}</figcaption>
+    </figure>`;
+}
+
+function blocPortail(portail) {
+  if (!portail) return "";
+  const cartes = (portail.garanties || []).map((g) => `      <article class="node-card">
+        <h3>${echapper(g.titre)}</h3>
+        <p>${echapper(g.texte)}</p>
+      </article>`).join("\n");
+  return `<section id="portail">
+    <h2><span class="sec-label">Portail</span> ${echapper(portail.titre)}</h2>
+    <p class="lead">${echapper(portail.accroche)}</p>
+    ${schemaPortail()}
+    <ol class="steps">
+${(portail.etapes || []).map((s, i) => `      <li><span class="n">${i + 1}</span><div><b>${echapper(s.titre)}</b><p>${echapper(s.texte)}</p></div></li>`).join("\n")}
+    </ol>
+    <div class="grid">
+${cartes}
+    </div>
+    <p class="lead">En option, à l'installation ou à la mise à jour :</p>
+    ${code(`curl -sL ${PAGES_URL}/install.sh | PORTAL=true bash`)}
+    <p class="note">Depuis le catalogue Onyxia : case « Enable the action portal ». Les notes du service donnent l'adresse à coller dans un widget personnalisé Grist, avec un accès complet au document.</p>
+  </section>`;
+}
+
 function blocContextes(produit) {
   const l = produit.contextes || [];
   if (!l.length) return "";
@@ -277,6 +333,8 @@ export function rendreHtml(v, versions, base = BASE) {
       --muted: #9795a6;
       --line: #2e2d39;
       --ok: #4bb98a;
+      /* Vert de Grist, pour ce qui se passe dans le document. */
+      --grist: #16b378;
     }
     * { box-sizing: border-box; }
     html { scroll-behavior: smooth; }
@@ -334,6 +392,10 @@ export function rendreHtml(v, versions, base = BASE) {
     .canvas svg { display: block; min-width: 640px; width: 100%; height: auto; }
     .nd { fill: var(--node); stroke: var(--node-line); stroke-width: 1.5; }
     .nd-accent { stroke: var(--accent); }
+    .nd-grist { stroke: var(--grist); }
+    .ed-t { fill: var(--muted); font: 10.5px "JetBrains Mono", monospace; text-anchor: middle; }
+    .schema { margin: 1.2rem 0 1.2rem; }
+    .apercu figcaption { margin-top: 0.5rem; color: var(--muted); font-size: 12.5px; max-width: 46rem; }
     .port { fill: var(--muted); }
     .edge { stroke: var(--muted); stroke-width: 2; fill: none; }
     .nd-t { fill: var(--ink); font: 600 13px "Open Sans", sans-serif; }
@@ -424,6 +486,7 @@ export function rendreHtml(v, versions, base = BASE) {
     ${blocSequence(v.produit)}
     ${blocInstaller(versions)}
     ${blocMcp()}
+    ${blocPortail(v.portail)}
     ${blocContextes(v.produit)}
     ${blocEncart(v.encart)}
     ${blocStack(v.stack)}

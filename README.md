@@ -2,13 +2,13 @@
 
 **Présentation produit :** [nic01asfr.github.io/n8n-onyxia](https://nic01asfr.github.io/n8n-onyxia/) — ce README reste la doc technique.
 
-Chart Helm qui lance [n8n](https://n8n.io) comme un service Onyxia (SSPCloud), avec un serveur [MCP](https://github.com/czlonkowski/n8n-mcp) intégré pour piloter les workflows depuis Claude, Cursor ou tout client MCP.
+Chart Helm qui lance [n8n](https://n8n.io) comme un service Onyxia (SSPCloud), avec un serveur [MCP](https://github.com/czlonkowski/n8n-mcp) intégré pour piloter les workflows depuis Claude, Cursor ou tout client MCP, et en option un portail d'actions qui met des workflows choisis à disposition dans des documents [Grist](https://www.getgrist.com).
 
 | | |
 |---|---|
 | n8n | 2.38.6 |
 | n8n-mcp | 2.84.0 |
-| Chart | 1.0.0, dépend de la `library-chart` InseeFrLab 2.1.7 |
+| Chart | 1.1.0, dépend de la `library-chart` InseeFrLab 2.1.7 |
 | Dépôt Helm | `https://nic01asfr.github.io/n8n-onyxia` |
 
 ## Installer
@@ -21,7 +21,7 @@ Lancer le service Jupyter avec le **rôle Kubernetes Edit** (le rôle View ne pe
 curl -sL https://nic01asfr.github.io/n8n-onyxia/install.sh | bash
 ```
 
-Le script calcule les hôtes (`<namespace>-n8n.user.lab.sspcloud.fr` et `<namespace>-n8n-mcp.user.lab.sspcloud.fr`), génère le mot de passe owner, installe le chart et enregistre le service dans « Mes services ». Variables utiles : `OWNER_EMAIL`, `RELEASE`, `CHART_VERSION`, `SKIP_MCP=true`.
+Le script calcule les hôtes (`<namespace>-n8n.user.lab.sspcloud.fr` et `<namespace>-n8n-mcp.user.lab.sspcloud.fr`), génère le mot de passe owner, installe le chart et enregistre le service dans « Mes services ». Variables utiles : `OWNER_EMAIL`, `RELEASE`, `CHART_VERSION`, `SKIP_MCP=true`, `PORTAL=true` (portail d'actions, hôte `<namespace>-n8n-portail.user.lab.sspcloud.fr`).
 
 ### Depuis le catalogue Onyxia
 
@@ -41,13 +41,14 @@ helm install n8n n8n-onyxia/n8n \
 
 ## Ce que fait le chart
 
-Un seul pod, trois conteneurs :
+Un seul pod, trois conteneurs, quatre avec le portail :
 
 | Conteneur | Rôle |
 |---|---|
 | `n8n` | L'éditeur et le moteur, données sur le volume monté en `/home/node/.n8n`. |
 | `provisioning` | Crée le compte owner dès le démarrage, puis une clé API pour le MCP, par `localhost`. Aucun droit Kubernetes. Script : [charts/n8n/files/provision.mjs](charts/n8n/files/provision.mjs). |
 | `mcp` | n8n-mcp, qui joint n8n sur `localhost` avec la clé déposée sur le volume et exige un jeton Bearer. |
+| `portal` | En option. Widget Grist et seule porte vers les workflows exposés, qu'il appelle sur `localhost` avec un secret. Code : [charts/n8n/files/portal/](charts/n8n/files/portal/). |
 
 Les notes du service (fenêtre « Ouvrir » d'Onyxia) affichent l'URL, l'identifiant, le mot de passe, l'adresse MCP, le jeton et la commande `claude mcp add` prête à coller.
 
@@ -59,6 +60,23 @@ Détail des valeurs : [charts/n8n/README.md](charts/n8n/README.md).
 claude mcp add n8n --transport http https://user-IDEP-n8n-mcp.user.lab.sspcloud.fr/mcp \
   --header "Authorization: Bearer <jeton affiché dans les notes>"
 ```
+
+## Mettre des workflows à disposition dans Grist
+
+Le portail d'actions transforme des workflows choisis en formulaires guidés, que les personnes ayant accès à un document Grist lancent depuis un widget, sans compte n8n.
+
+```bash
+curl -sL https://nic01asfr.github.io/n8n-onyxia/install.sh | PORTAL=true bash
+```
+
+Depuis le catalogue Onyxia : case « Enable the action portal ». Ensuite :
+
+1. Dans un document Grist, ajouter un widget personnalisé avec l'adresse du portail (notes du service) et un accès complet au document.
+2. Dans le widget, « Configurer » : se connecter à n8n avec le jeton MCP, le compte du service ou une clé API. Le premier compte Grist qui le fait devient propriétaire du portail.
+3. Choisir un workflow dont le déclencheur est un Webhook POST, protégé par le credential « Portail d'actions (en-tête) » créé dans n8n, et publié. L'éditeur règle le formulaire et le résultat affiché ; l'aperçu lance vraiment le workflow.
+4. Régler l'accès au document (aucun, lecture, écriture) et, au besoin, la table où ranger le résultat, puis ouvrir l'action dans le document.
+
+Le workflow reçoit les champs dans `$json.body.<champ>` et le contexte vérifié sous `$json.body._portail`. Contrat et garanties : [charts/n8n/README.md](charts/n8n/README.md#portail-dactions).
 
 ## Migrer depuis les charts 0.x
 
@@ -85,6 +103,7 @@ Sans `MIGRATE=true`, `install.sh` refuse de toucher une release 0.x (n8n 1.x). A
 | Notes | Conservées par Helm dans le Secret de la release : qui lit les Secrets du namespace lit le mot de passe affiché. |
 | Réseau sortant | Pas d'IP fixe, port 25 fermé (utiliser 587 ou 465). |
 | Volume | Dans Onyxia, supprimer le service supprime le volume : exporter les workflows avant. |
+| Portail | Un compte Grist propriétaire par portail. Formulaires sans pièce jointe ni liste tirée d'une table Grist. Sites Grist acceptés : `portal.gristOrigins`. |
 
 ## Développer
 

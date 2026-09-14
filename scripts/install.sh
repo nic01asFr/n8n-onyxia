@@ -16,6 +16,9 @@
 #   RELEASE        : nom de la release Helm (défaut : n8n).
 #   CHART_VERSION  : version du chart (défaut : la plus récente).
 #   SKIP_MCP       : "true" pour installer n8n sans serveur MCP.
+#   PORTAL         : "true" pour ajouter le portail d'actions (workflows mis à
+#                    disposition dans Grist), "false" pour le retirer. Sans la
+#                    variable, une mise à jour garde le réglage en place.
 #   MIGRATE        : "true" pour reprendre une release des charts 0.x (n8n 1.x) en
 #                    conservant ses données : sauvegarde, puis mise à jour en place.
 #   BACKUP_DIR     : dossier de la sauvegarde faite avant migration (défaut : dossier courant).
@@ -71,6 +74,7 @@ RELEASE="${RELEASE:-n8n}"
 DOMAIN="${ONYXIA_DOMAIN:-user.lab.sspcloud.fr}"
 N8N_HOST="${NS}-${RELEASE}.${DOMAIN}"
 MCP_HOST="${NS}-${RELEASE}-mcp.${DOMAIN}"
+PORTAL_HOST="${NS}-${RELEASE}-portail.${DOMAIN}"
 
 # --- 3. Release existante ----------------------------------------------------------
 EXISTING_CHART=$(helm list -n "$NS" --filter "^${RELEASE}\$" -o json 2>/dev/null \
@@ -147,6 +151,12 @@ HELM_ARGS=(
   --set "persistence.keepOnUninstall=true"
 )
 [[ "${SKIP_MCP:-false}" == "true" ]] && HELM_ARGS+=(--set "mcp.enabled=false")
+case "${PORTAL:-}" in
+  true)  HELM_ARGS+=(--set "portal.enabled=true" --set "portal.hostname=$PORTAL_HOST") ;;
+  false) HELM_ARGS+=(--set "portal.enabled=false") ;;
+  "")    ;;
+  *)     die "PORTAL vaut « true » ou « false », pas « $PORTAL »." ;;
+esac
 [[ -n "${CHART_VERSION:-}" ]] && HELM_ARGS+=(--version "$CHART_VERSION")
 
 if [[ "$MIGRATING" == "true" ]]; then

@@ -32,12 +32,13 @@ test("generate produit la vitrine, ses sections et ses assets", () => {
   const { out, bytes, versions } = generate({ distDir: dist });
   assert.ok(bytes > 5000);
   const html = fs.readFileSync(out, "utf8");
-  for (const id of ["produit", "apercu", "promesse", "fonctionnalites", "parcours", "installer", "mcp", "usages", "stack", "migration", "journal"]) {
+  for (const id of ["produit", "apercu", "promesse", "fonctionnalites", "parcours", "installer", "mcp", "portail", "usages", "stack", "migration", "journal"]) {
     assert.match(html, new RegExp(`id="${id}"`), `section ${id} absente`);
   }
   assert.match(html, /base href="\/n8n-onyxia\/"/);
   assert.match(html, /--accent: #EA4B71/);
   assert.match(html, /install\.sh \| bash/);
+  assert.match(html, /install\.sh \| PORTAL=true bash/);
   assert.ok(html.includes(versions.n8n), "version n8n absente");
   assert.ok(fs.existsSync(path.join(dist, "assets", "n8n.svg")), "icône absente");
   assert.doesNotMatch(html, /undefined/);

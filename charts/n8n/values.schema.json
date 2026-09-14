@@ -167,7 +167,7 @@
         "enabled": {
           "type": "boolean",
           "title": "Enable the action portal",
-          "description": "Adds a Grist custom widget, served by this service, with its own URL and admin token shown in the service notes.",
+          "description": "Adds a Grist custom widget served by this service: you pick workflows, design their form, and colleagues run them from the document. Its URL is in the service notes; you open its settings with the MCP token or your n8n account.",
           "default": false
         },
         "hostname": {
