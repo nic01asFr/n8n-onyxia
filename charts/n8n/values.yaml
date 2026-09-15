@@ -114,8 +114,8 @@ portal:
   hostname: ""
   # Le mode « Configurer » s'ouvre avec le jeton du serveur MCP, le compte n8n
   # du service ou une clé API, par le compte Grist propriétaire : aucun jeton à
-  # régler ici. Le secret
-  # joint aux webhooks est tiré au sort et gardé dans le Secret.
+  # régler ici. Le secret joint aux webhooks est tiré au sort et gardé dans le
+  # Secret.
   # Hôtes Grist dont le portail accepte les documents, et qui peuvent
   # l'intégrer en iframe.
   gristOrigins: "https://grist.numerique.gouv.fr,https://docs.getgrist.com"
@@ -132,6 +132,42 @@ portal:
     limits:
       cpu: 300m
       memory: 128Mi
+
+# --- Nœuds Code : Python et JavaScript -------------------------------------------------
+# L'image n8n ne contient pas Python. Les nœuds Code s'exécutent donc dans un
+# conteneur à part, l'image officielle des task runners, qui se connecte à n8n
+# sur localhost. Il ne monte ni le volume ni les secrets de n8n, et ses
+# processus ne reçoivent qu'une liste fermée de variables d'environnement.
+# Désactivé : le JavaScript tourne dans le conteneur n8n, Python est refusé.
+runners:
+  enabled: true
+  image:
+    # Docker Hub : docker.n8n.io ne sert pas cette image.
+    repository: n8nio/runners
+    # Vide : la version de n8n, que n8n exige identique.
+    tag: ""
+    pullPolicy: IfNotPresent
+  python:
+    # Modules de la bibliothèque standard que le code peut importer, par nom de
+    # premier niveau, séparés par des virgules ; « * » pour tous. Par défaut :
+    # calcul, texte et dates, sans fichier, processus ni réseau.
+    stdlibAllow: "json,re,math,cmath,statistics,random,secrets,decimal,fractions,datetime,time,calendar,zoneinfo,collections,itertools,functools,operator,bisect,heapq,copy,dataclasses,enum,typing,string,textwrap,unicodedata,difflib,html,csv,base64,binascii,hashlib,hmac,uuid,pprint"
+    # Paquets tiers importables : seuls ceux d'une image dérivée existent.
+    externalAllow: ""
+  javascript:
+    # Valeurs par défaut de n8n.
+    builtinAllow: "crypto"
+    externalAllow: "moment"
+  # Un runner inactif depuis ce délai (secondes) s'arrête ; il est relancé à la
+  # tâche suivante.
+  autoShutdownTimeout: 15
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
 
 # --- Base de données -----------------------------------------------------------------
 database:
@@ -176,6 +212,10 @@ networking:
     port: 3000
   portal:
     port: 3100
+  # Broker des task runners (n8n, localhost seulement) et santé du lanceur.
+  runners:
+    brokerPort: 5679
+    healthPort: 5680
 
 ingress:
   enabled: true

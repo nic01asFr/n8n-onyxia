@@ -94,6 +94,24 @@
 {{- end -}}
 
 {{/*
+  Jeton partagé par n8n et le lanceur des task runners. Tiré au sort une fois,
+  puis relu dans le Secret, pour qu'une mise à jour ne coupe pas le lien.
+*/}}
+{{- define "n8n.runnersAuthToken" -}}
+{{- if not (hasKey .Values "__runnersAuthToken") -}}
+{{- $existing := include "n8n.existingSecretData" . | fromJson -}}
+{{- $stored := index $existing "RUNNERS_AUTH_TOKEN" | default "" | b64dec -}}
+{{- $_ := set .Values "__runnersAuthToken" ($stored | default (randAlphaNum 48)) -}}
+{{- end -}}
+{{- index .Values "__runnersAuthToken" -}}
+{{- end -}}
+
+{{/* Image des task runners : même version que n8n par défaut. */}}
+{{- define "n8n.runnersImage" -}}
+{{- printf "%s:%s" .Values.runners.image.repository (.Values.runners.image.tag | default .Values.service.image.tag | default .Chart.AppVersion) -}}
+{{- end -}}
+
+{{/*
   Source PostgreSQL retenue :
     « external »  : database.type = postgresdb ;
     « discovery » : discovery.postgresql et un service PostgreSQL Onyxia trouvé ;

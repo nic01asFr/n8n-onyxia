@@ -104,7 +104,7 @@
   "fonctionnalites": [
     {
       "titre": "Plus de 400 intégrations",
-      "texte": "API REST, bases de données, S3, messageries, LLM : chaque nœud se configure dans l'éditeur, les credentials sont chiffrées.",
+      "texte": "API REST, bases de données, S3, messageries, LLM : chaque nœud se configure dans l'éditeur, les credentials sont chiffrées. Le nœud Code accepte JavaScript et Python.",
       "pourQui": "Pour qui : toute personne qui enchaîne des outils à la main."
     },
     {
@@ -150,7 +150,7 @@
   "journal": [
     {
       "version": "chart 1.1.0",
-      "texte": "Portail d'actions en option : les workflows choisis deviennent des formulaires lancés depuis Grist, avec éditeur visuel, essai réel, identité vérifiée par Grist et résultat enregistré dans le document. Éprouvé de bout en bout sur grist.numerique.gouv.fr."
+      "texte": "Portail d'actions en option : les workflows choisis deviennent des formulaires lancés depuis Grist, avec éditeur visuel, essai réel, identité vérifiée par Grist et résultat enregistré dans le document. Éprouvé de bout en bout sur grist.numerique.gouv.fr. Nœuds Code en Python, exécutés comme le JavaScript dans un conteneur isolé de n8n."
     },
     {
       "version": "chart 1.0.2",

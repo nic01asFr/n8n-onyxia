@@ -104,6 +104,27 @@ jobs:
             echo "le rendu du portail sans hôte aurait dû échouer"; exit 1
           fi
 
+      # Nœuds Code : runners à la version exacte de n8n, broker sur localhost,
+      # configuration du lanceur en JSON valide ; rien quand ils sont désactivés.
+      - name: Render with task runners
+        run: |
+          set -euo pipefail
+          HOSTS="--set ingress.hostname=n8n.example.org --set mcp.hostname=mcp.example.org --set security.email=a@example.org"
+          N8N_TAG=$(sed -n 's/^    tag: "\(.*\)"$/\1/p' charts/n8n/values.yaml | head -1)
+          helm template t charts/n8n $HOSTS > /tmp/runners.yaml
+          grep -q "image: \"n8nio/runners:${N8N_TAG}\"" /tmp/runners.yaml
+          grep -q 'N8N_RUNNERS_MODE' /tmp/runners.yaml
+          grep -A1 'N8N_RUNNERS_BROKER_LISTEN_ADDRESS' /tmp/runners.yaml | grep -q '127.0.0.1'
+          helm template t charts/n8n $HOSTS --show-only templates/configmap-runners.yaml \
+            | node -e '
+              const t = require("fs").readFileSync(0, "utf8");
+              const body = t.slice(t.indexOf("{")).split("\n").map((l) => l.replace(/^    /, "")).join("\n");
+              const types = JSON.parse(body)["task-runners"].map((r) => r["runner-type"]).sort().join(",");
+              if (types !== "javascript,python") { console.error("runners :", types); process.exit(1); }
+            '
+          helm template t charts/n8n $HOSTS --set runners.enabled=false > /tmp/no-runners.yaml
+          ! grep -q 'n8nio/runners\|N8N_RUNNERS_MODE\|RUNNERS_AUTH_TOKEN' /tmp/no-runners.yaml
+
   release:
     needs: test
     if: github.event_name != 'pull_request'

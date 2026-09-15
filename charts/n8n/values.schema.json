@@ -192,6 +192,31 @@
         }
       }
     },
+    "runners": {
+      "type": "object",
+      "title": "Code nodes",
+      "description": "Where Code nodes run their JavaScript and Python",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "title": "Run Code nodes in a separate container (Python support)",
+          "description": "Official n8n task runners, isolated from n8n's volume and secrets. Required for Python: the n8n image has none.",
+          "default": true
+        },
+        "python": {
+          "type": "object",
+          "title": "Python",
+          "properties": {
+            "stdlibAllow": {
+              "type": "string",
+              "title": "Importable standard library modules",
+              "description": "Comma-separated top-level module names, or * for all. The default covers computation, text and dates, without files, processes or network.",
+              "default": "json,re,math,cmath,statistics,random,secrets,decimal,fractions,datetime,time,calendar,zoneinfo,collections,itertools,functools,operator,bisect,heapq,copy,dataclasses,enum,typing,string,textwrap,unicodedata,difflib,html,csv,base64,binascii,hashlib,hmac,uuid,pprint"
+            }
+          }
+        }
+      }
+    },
     "n8n": {
       "type": "object",
       "title": "n8n",

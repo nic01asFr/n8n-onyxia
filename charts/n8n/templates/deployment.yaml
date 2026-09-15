@@ -25,6 +25,7 @@ spec:
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
         checksum/provision: {{ include (print $.Template.BasePath "/configmap-provision.yaml") . | sha256sum }}
         checksum/portal: {{ include (print $.Template.BasePath "/configmap-portal.yaml") . | sha256sum }}
+        checksum/runners: {{ include (print $.Template.BasePath "/configmap-runners.yaml") . | sha256sum }}
     spec:
       # Aucun conteneur ne parle à l'API Kubernetes.
       automountServiceAccountToken: false
@@ -96,6 +97,23 @@ spec:
             # Valeurs actuelles fixées : n8n annonce qu'elles vont baisser.
             - name: N8N_RUNNERS_TASK_TIMEOUT
               value: "300"
+            {{- if .Values.runners.enabled }}
+            # Nœuds Code dans le conteneur « runners » : n8n n'ouvre son broker
+            # qu'à localhost, et n'y accepte que le jeton du Secret.
+            - name: N8N_RUNNERS_MODE
+              value: external
+            - name: N8N_RUNNERS_BROKER_LISTEN_ADDRESS
+              value: "127.0.0.1"
+            - name: N8N_RUNNERS_BROKER_PORT
+              value: {{ .Values.networking.runners.brokerPort | quote }}
+            - name: N8N_NATIVE_PYTHON_RUNNER
+              value: "true"
+            - name: N8N_RUNNERS_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: RUNNERS_AUTH_TOKEN
+            {{- end }}
             - name: N8N_COMPRESSION_NODE_MAX_DECOMPRESSED_SIZE_BYTES
               value: "2147483648"
             - name: N8N_COMPRESSION_NODE_MAX_ZIP_ENTRIES
@@ -366,6 +384,49 @@ spec:
               mountPath: /portal
               readOnly: true
         {{- end }}
+        {{- if .Values.runners.enabled }}
+        # Task runners : exécutent le code des nœuds Code (JavaScript et
+        # Python), lancés à la demande par le lanceur de l'image officielle.
+        # Ni volume ni secret de n8n, hormis le jeton qui les relie au broker.
+        - name: runners
+          image: {{ include "n8n.runnersImage" . | quote }}
+          imagePullPolicy: {{ .Values.runners.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: runners-health
+              containerPort: {{ .Values.networking.runners.healthPort }}
+              protocol: TCP
+          env:
+            - name: N8N_RUNNERS_TASK_BROKER_URI
+              value: "http://127.0.0.1:{{ .Values.networking.runners.brokerPort }}"
+            - name: N8N_RUNNERS_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: RUNNERS_AUTH_TOKEN
+            - name: N8N_RUNNERS_LAUNCHER_HEALTH_CHECK_PORT
+              value: {{ .Values.networking.runners.healthPort | quote }}
+            - name: N8N_RUNNERS_AUTO_SHUTDOWN_TIMEOUT
+              value: {{ .Values.runners.autoShutdownTimeout | quote }}
+            - name: N8N_RUNNERS_TASK_TIMEOUT
+              value: "300"
+            - name: GENERIC_TIMEZONE
+              value: {{ .Values.n8n.timezone | quote }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: runners-health
+            periodSeconds: 30
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.runners.resources | nindent 12 }}
+          volumeMounts:
+            - name: runners-config
+              mountPath: /etc/n8n-task-runners.json
+              subPath: n8n-task-runners.json
+              readOnly: true
+        {{- end }}
       volumes:
         - name: data
           {{- if .Values.persistence.enabled }}
@@ -383,6 +444,11 @@ spec:
         - name: portal
           configMap:
             name: {{ $fullName }}-portal
+        {{- end }}
+        {{- if .Values.runners.enabled }}
+        - name: runners-config
+          configMap:
+            name: {{ $fullName }}-runners
         {{- end }}
         {{- if .Values.mcp.enabled }}
         # Base de documentation des nœuds (environ 65 Mo), recopiée au démarrage.

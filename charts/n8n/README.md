@@ -19,6 +19,9 @@ n8n pour Onyxia, avec serveur MCP intégré. Vue d'ensemble et installation : [R
 | `portal.enabled` | `false` | | Portail d'actions : widget Grist qui lance des workflows choisis |
 | `portal.hostname` | vide (obligatoire si portail) | `{{project.id}}-n8n-portail-{{k8s.randomSubdomain}}.{{k8s.domain}}` | Hôte du portail |
 | `portal.gristOrigins` | grist.numerique.gouv.fr, docs.getgrist.com | | Sites Grist acceptés et autorisés à intégrer le portail |
+| `runners.enabled` | `true` | | Nœuds Code (JavaScript et Python) dans le conteneur `runners` ; désactivé, pas de Python |
+| `runners.python.stdlibAllow` | calcul, texte, dates (35 modules) | | Modules de la bibliothèque standard importables, `*` pour tous |
+| `runners.python.externalAllow` | vide | | Paquets tiers importables (image dérivée) |
 | `provisioning.enabled` | `true` | | Création de l'owner et de la clé API |
 | `provisioning.apiKeyScopePrefixes` | workflows, exécutions, étiquettes, tables, credentials, dossiers | | Droits de la clé API du MCP |
 | `database.type` | `sqlite` | | `postgresdb` pour un PostgreSQL externe |
@@ -66,4 +69,14 @@ Code : [files/portal/](files/portal/). Tests : `node --test tests/portal/*.test.
 
 ## Sécurité du pod
 
-Jusqu'à quatre conteneurs en uid 1000, sans capacité Linux, sans escalade de privilèges, profil seccomp `RuntimeDefault`, sans jeton de ServiceAccount monté. L'image n8n-mcp déclare un utilisateur non numérique : elle tourne elle aussi en uid 1000, avec sa base de nœuds sur un volume temporaire (`NODE_DB_PATH`).
+Jusqu'à cinq conteneurs en uid 1000, sans capacité Linux, sans escalade de privilèges, profil seccomp `RuntimeDefault`, sans jeton de ServiceAccount monté. L'image n8n-mcp déclare un utilisateur non numérique : elle tourne elle aussi en uid 1000, avec sa base de nœuds sur un volume temporaire (`NODE_DB_PATH`).
+
+## Nœuds Code : task runners
+
+L'image n8n ne contient pas Python. Le conteneur `runners` (image officielle `n8nio/runners`, tag de n8n par défaut, que n8n exige identique) exécute le code des nœuds Code, JavaScript et Python, en mode `external` :
+
+- n8n n'ouvre son broker qu'à `127.0.0.1:5679`, et n'y accepte que le jeton `RUNNERS_AUTH_TOKEN`, tiré au sort une fois et gardé dans le Secret.
+- Le conteneur ne monte ni le volume de n8n ni son Secret, hormis ce jeton ; ses processus ne reçoivent qu'une liste fermée de variables d'environnement.
+- Les runners démarrent à la demande et s'arrêtent après `runners.autoShutdownTimeout` secondes d'inactivité.
+- Imports Python : l'image impose des listes vides, que le lanceur ne laisse pas surcharger par l'environnement. Le chart remplace donc `/etc/n8n-task-runners.json` ([templates/configmap-runners.yaml](templates/configmap-runners.yaml)), repris du fichier officiel de n8n 2.38.6, avec `runners.python.stdlibAllow` (calcul, texte, dates par défaut, sans fichier, processus ni réseau) et `runners.python.externalAllow`. À comparer avec le fichier officiel à chaque montée de version de n8n.
+- Les fonctions dangereuses restent refusées par le runner Python lui-même (`eval`, `exec`, `open`, `getattr`...).

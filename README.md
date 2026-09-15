@@ -41,13 +41,14 @@ helm install n8n n8n-onyxia/n8n \
 
 ## Ce que fait le chart
 
-Un seul pod, trois conteneurs, quatre avec le portail :
+Un seul pod, quatre conteneurs, cinq avec le portail :
 
 | Conteneur | Rôle |
 |---|---|
 | `n8n` | L'éditeur et le moteur, données sur le volume monté en `/home/node/.n8n`. |
 | `provisioning` | Crée le compte owner dès le démarrage, puis une clé API pour le MCP, par `localhost`. Aucun droit Kubernetes. Script : [charts/n8n/files/provision.mjs](charts/n8n/files/provision.mjs). |
 | `mcp` | n8n-mcp, qui joint n8n sur `localhost` avec la clé déposée sur le volume et exige un jeton Bearer. |
+| `runners` | Task runners officiels (`n8nio/runners`, même version que n8n) : exécutent le JavaScript et le Python des nœuds Code, sans accès au volume ni aux secrets de n8n. Modules Python autorisés : `runners.python.stdlibAllow`. |
 | `portal` | En option. Widget Grist et seule porte vers les workflows exposés, qu'il appelle sur `localhost` avec un secret. Code : [charts/n8n/files/portal/](charts/n8n/files/portal/). |
 
 Les notes du service (fenêtre « Ouvrir » d'Onyxia) affichent l'URL, l'identifiant, le mot de passe, l'adresse MCP, le jeton et la commande `claude mcp add` prête à coller.
