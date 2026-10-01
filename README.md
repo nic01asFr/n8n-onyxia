@@ -8,7 +8,7 @@ Chart Helm qui lance [n8n](https://n8n.io) comme un service Onyxia (SSPCloud), a
 |---|---|
 | n8n | 2.38.6 |
 | n8n-mcp | 2.84.0 |
-| Chart | 1.1.0, dépend de la `library-chart` InseeFrLab 2.1.7 |
+| Chart | 1.2.0, dépend de la `library-chart` InseeFrLab 2.1.7 |
 | Dépôt Helm | `https://nic01asfr.github.io/n8n-onyxia` |
 
 ## Installer
@@ -21,7 +21,7 @@ Lancer le service Jupyter avec le **rôle Kubernetes Edit** (le rôle View ne pe
 curl -sL https://nic01asfr.github.io/n8n-onyxia/install.sh | bash
 ```
 
-Le script calcule les hôtes (`<namespace>-n8n.user.lab.sspcloud.fr` et `<namespace>-n8n-mcp.user.lab.sspcloud.fr`), génère le mot de passe owner, installe le chart et enregistre le service dans « Mes services ». Variables utiles : `OWNER_EMAIL`, `RELEASE`, `CHART_VERSION`, `SKIP_MCP=true`, `PORTAL=true` (portail d'actions, hôte `<namespace>-n8n-portail.user.lab.sspcloud.fr`).
+Le script calcule les hôtes (`<namespace>-n8n.user.lab.sspcloud.fr` et `<namespace>-n8n-mcp.user.lab.sspcloud.fr`), génère le mot de passe owner, installe le chart et enregistre le service dans « Mes services ». Variables utiles : `OWNER_EMAIL`, `RELEASE`, `CHART_VERSION`, `SKIP_MCP=true`, `PORTAL=true` (portail d'actions, hôte `<namespace>-n8n-portail.user.lab.sspcloud.fr`). Le script refuse d'installer un chart plus ancien que celui en place (`ALLOW_DOWNGRADE=true` pour passer outre).
 
 ### Depuis le catalogue Onyxia
 
