@@ -4,9 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>n8n pour Onyxia</title>
-  <meta name="description" content="Ton instance n8n sur SSPCloud, prête en deux minutes&nbsp;: éditeur de workflows, webhooks publics, et un serveur MCP pour que ton assistant IA construise les workflows avec toi." />
+  <meta name="description" content="Ton instance n8n sur SSPCloud, prête en deux minutes&nbsp;: éditeur de workflows, webhooks publics, un serveur MCP pour que ton assistant IA construise les workflows avec toi, et un portail pour les confier à tes collègues depuis Grist." />
   <meta property="og:title" content="n8n pour Onyxia" />
-  <meta property="og:description" content="Ton instance n8n sur SSPCloud, prête en deux minutes&nbsp;: éditeur de workflows, webhooks publics, et un serveur MCP pour que ton assistant IA construise les workflows avec toi." />
+  <meta property="og:description" content="Ton instance n8n sur SSPCloud, prête en deux minutes&nbsp;: éditeur de workflows, webhooks publics, un serveur MCP pour que ton assistant IA construise les workflows avec toi, et un portail pour les confier à tes collègues depuis Grist." />
   <meta property="og:type" content="website" />
   <meta name="theme-color" content="#1b1a23" />
   <link rel="canonical" href="https://nic01asfr.github.io/n8n-onyxia/" />
@@ -31,6 +31,8 @@
       --muted: #9795a6;
       --line: #2e2d39;
       --ok: #4bb98a;
+      /* Vert de Grist, pour ce qui se passe dans le document. */
+      --grist: #16b378;
     }
     * { box-sizing: border-box; }
     html { scroll-behavior: smooth; }
@@ -88,6 +90,10 @@
     .canvas svg { display: block; min-width: 640px; width: 100%; height: auto; }
     .nd { fill: var(--node); stroke: var(--node-line); stroke-width: 1.5; }
     .nd-accent { stroke: var(--accent); }
+    .nd-grist { stroke: var(--grist); }
+    .ed-t { fill: var(--muted); font: 10.5px "JetBrains Mono", monospace; text-anchor: middle; }
+    .schema { margin: 1.2rem 0 1.2rem; }
+    .apercu figcaption { margin-top: 0.5rem; color: var(--muted); font-size: 12.5px; max-width: 46rem; }
     .port { fill: var(--muted); }
     .edge { stroke: var(--muted); stroke-width: 2; fill: none; }
     .nd-t { fill: var(--ink); font: 600 13px "Open Sans", sans-serif; }
@@ -148,15 +154,15 @@
 <body>
   <div class="topbar">
     <img src="assets/n8n.svg" alt="" />
-    <span class="crumb"><b>n8n pour Onyxia</b> · chart 1.0.2</span>
+    <span class="crumb"><b>n8n pour Onyxia</b> · chart 1.2.0</span>
     <span class="status"><span class="dot" aria-hidden="true"></span> SSPCloud · Onyxia · open source</span>
   </div>
   <header class="hero">
     <div class="wrap">
       <p class="eyebrow">Service Onyxia</p>
       <h1 class="brand">n8n pour Onyxia</h1>
-      <p class="pitch">Ton instance n8n sur SSPCloud, prête en deux minutes&nbsp;: éditeur de workflows, webhooks publics, et un serveur MCP pour que ton assistant IA construise les workflows avec toi.</p>
-      <div class="tags"><span class="tag">n8n</span><span class="tag">MCP</span><span class="tag">Onyxia</span><span class="tag">SSPCloud</span><span class="tag">Helm</span></div>
+      <p class="pitch">Ton instance n8n sur SSPCloud, prête en deux minutes&nbsp;: éditeur de workflows, webhooks publics, un serveur MCP pour que ton assistant IA construise les workflows avec toi, et un portail pour les confier à tes collègues depuis Grist.</p>
+      <div class="tags"><span class="tag">n8n</span><span class="tag">MCP</span><span class="tag">Grist</span><span class="tag">Onyxia</span><span class="tag">SSPCloud</span><span class="tag">Helm</span></div>
       <div class="cta">
         <a class="btn primary" href="#installer">Installer</a>
         <a class="btn ghost" href="https://github.com/nic01asFr/n8n-onyxia">Code source</a>
@@ -219,13 +225,18 @@
     <div class="grid">
       <article class="node-card">
         <h3>Plus de 400 intégrations</h3>
-        <p>API REST, bases de données, S3, messageries, LLM&nbsp;: chaque nœud se configure dans l'éditeur, les credentials sont chiffrées.</p>
+        <p>API REST, bases de données, S3, messageries, LLM&nbsp;: chaque nœud se configure dans l'éditeur, les credentials sont chiffrées. Le nœud Code accepte JavaScript et Python.</p>
         <p class="note">Pour qui&nbsp;: toute personne qui enchaîne des outils à la main.</p>
       </article>
       <article class="node-card">
         <h3>Workflows pilotés par un assistant</h3>
         <p>Rechercher un nœud, valider un workflow, le créer, le mettre à jour, lire ses exécutions&nbsp;: le serveur n8n-mcp expose ces outils au protocole MCP.</p>
         <p class="note">Pour qui&nbsp;: les utilisateurs de Claude Code, Claude Desktop ou Cursor.</p>
+      </article>
+      <article class="node-card">
+        <h3>Workflows en formulaires dans Grist</h3>
+        <p>Choisis des workflows, dessine leur formulaire dans un éditeur visuel&nbsp;: tes collègues les lancent depuis un document Grist et le résultat s'enregistre dans une table.</p>
+        <p class="note">Pour qui&nbsp;: les équipes qui partagent un traitement avec des personnes qui n'ouvrent pas n8n.</p>
       </article>
       <article class="node-card">
         <h3>PostgreSQL Onyxia découvert automatiquement</h3>
@@ -267,7 +278,7 @@
         <h3>Helm</h3>
         <p>Pour régler chaque valeur toi-même :</p>
         <pre class="code"><code>helm repo add n8n-onyxia https://nic01asfr.github.io/n8n-onyxia
-helm install n8n n8n-onyxia/n8n --version 1.0.2 \
+helm install n8n n8n-onyxia/n8n --version 1.2.0 \
   --set ingress.hostname=user-IDEP-n8n.user.lab.sspcloud.fr \
   --set mcp.hostname=user-IDEP-n8n-mcp.user.lab.sspcloud.fr \
   --set ingress.ingressClassName=onyxia \
@@ -282,6 +293,70 @@ helm install n8n n8n-onyxia/n8n --version 1.0.2 \
     <pre class="code"><code>claude mcp add n8n --transport http https://user-IDEP-n8n-mcp.user.lab.sspcloud.fr/mcp \
   --header &quot;Authorization: Bearer &lt;jeton affiché dans les notes&gt;&quot;</code></pre>
     <p class="lead">Puis demande par exemple : « Crée un workflow qui récupère chaque matin le flux RSS de l'Insee et me l'envoie par mail. »</p>
+  </section>
+    <section id="portail">
+    <h2><span class="sec-label">Portail</span> Tes workflows en formulaires dans Grist</h2>
+    <p class="lead">Un workflow rend service à qui sait l'ouvrir. Le portail d'actions le met à la portée de tes collègues&nbsp;: tu choisis les workflows, tu dessines leur formulaire, et ils les lancent depuis un document Grist, sans compte n8n. Chacun agit avec ses propres droits sur le document.</p>
+    <figure class="apercu schema">
+      <div class="canvas">
+        <svg viewBox="0 0 784 128" role="img" aria-label="Le portail est la seule porte&nbsp;: il fait vérifier la personne par Grist, appelle le webhook avec son secret, et le résultat est rangé dans le document avec les droits du demandeur.">
+          
+      <path d="M156 64 L 220 64" class="edge"/>
+      <text x="188" y="54" class="ed-t">jeton</text>
+      <path d="M360 64 L 424 64" class="edge"/>
+      <text x="392" y="54" class="ed-t">secret</text>
+      <path d="M564 64 L 628 64" class="edge"/>
+      <text x="596" y="54" class="ed-t">retour</text>
+      <g transform="translate(16 28)">
+        <rect width="140" height="72" rx="10" class="nd nd-grist"/>
+        <circle cx="0" cy="36" r="5" class="port"/><circle cx="140" cy="36" r="5" class="port"/>
+        <text x="16" y="32" class="nd-t">Document Grist</text>
+        <text x="16" y="52" class="nd-s">formulaire</text>
+      </g>
+      <g transform="translate(220 28)">
+        <rect width="140" height="72" rx="10" class="nd nd-accent"/>
+        <circle cx="0" cy="36" r="5" class="port"/><circle cx="140" cy="36" r="5" class="port"/>
+        <text x="16" y="32" class="nd-t">Portail</text>
+        <text x="16" y="52" class="nd-s">vérifie, décide</text>
+      </g>
+      <g transform="translate(424 28)">
+        <rect width="140" height="72" rx="10" class="nd"/>
+        <circle cx="0" cy="36" r="5" class="port"/><circle cx="140" cy="36" r="5" class="port"/>
+        <text x="16" y="32" class="nd-t">Webhook n8n</text>
+        <text x="16" y="52" class="nd-s">calcule</text>
+      </g>
+      <g transform="translate(628 28)">
+        <rect width="140" height="72" rx="10" class="nd nd-grist"/>
+        <circle cx="0" cy="36" r="5" class="port"/><circle cx="140" cy="36" r="5" class="port"/>
+        <text x="16" y="32" class="nd-t">Table Grist</text>
+        <text x="16" y="52" class="nd-s">garde la trace</text>
+      </g>
+        </svg>
+      </div>
+      <figcaption>Le portail est la seule porte&nbsp;: il fait vérifier la personne par Grist, appelle le webhook avec son secret, et le résultat est rangé dans le document avec les droits du demandeur.</figcaption>
+    </figure>
+    <ol class="steps">
+      <li><span class="n">1</span><div><b>Tu configures</b><p>Dans le widget, tu te connectes à ton n8n avec le jeton MCP ou ton compte, puis tu choisis un workflow à déclencheur Webhook. L'éditeur règle son formulaire&nbsp;: étapes, champs, choix, conditions. L'aperçu lance vraiment le workflow et propose ses clés de retour en un clic.</p></div></li>
+      <li><span class="n">2</span><div><b>Tu ouvres l'action dans un document</b><p>Une action n'apparaît que dans les documents où tu l'ouvres, par défaut aux seuls comptes Grist connectés. Tu décides si le workflow peut lire ou modifier le document, et dans quelle table ranger le résultat.</p></div></li>
+      <li><span class="n">3</span><div><b>Tes collègues la lancent</b><p>Un formulaire guidé, ce qui sera transmis dit avant l'envoi, puis le résultat mis en forme&nbsp;: statut, texte, liste, lien. La ligne s'ajoute à la table choisie, avec les droits de la personne.</p></div></li>
+    </ol>
+    <div class="grid">
+      <article class="node-card">
+        <h3>Seule porte vers le workflow</h3>
+        <p>Le webhook exige un secret que seul le portail détient&nbsp;: un appel direct est refusé.</p>
+      </article>
+      <article class="node-card">
+        <h3>Identité confirmée par Grist</h3>
+        <p>Avant tout lancement, le portail fait vérifier par Grist le jeton de la personne et le document d'où elle agit.</p>
+      </article>
+      <article class="node-card">
+        <h3>Ses droits, pas les tiens</h3>
+        <p>Le workflow reçoit un jeton du demandeur, valable quelques minutes et pour ce seul document.</p>
+      </article>
+    </div>
+    <p class="lead">En option, à l'installation ou à la mise à jour :</p>
+    <pre class="code"><code>curl -sL https://nic01asfr.github.io/n8n-onyxia/install.sh | PORTAL=true bash</code></pre>
+    <p class="note">Depuis le catalogue Onyxia : case « Enable the action portal ». Les notes du service donnent l'adresse à coller dans un widget personnalisé Grist, avec un accès complet au document.</p>
   </section>
     <section id="usages">
     <h2><span class="sec-label">Usages</span> Quand ça compte</h2>
@@ -301,6 +376,11 @@ helm install n8n n8n-onyxia/n8n --version 1.0.2 \
         <p>Tu décris le besoin en langage naturel&nbsp;; l'assistant cherche les bons nœuds, écrit le workflow et lit les exécutions en échec.</p>
         <p class="note">Le serveur MCP connaît le catalogue complet des nœuds n8n.</p>
       </article>
+      <article class="node-card">
+        <h3>Outiller une équipe qui n'ouvre pas n8n</h3>
+        <p>Analyser une page, résumer un texte, enrichir une liste&nbsp;: tes collègues remplissent un formulaire dans leur document Grist, le workflow fait le reste.</p>
+        <p class="note">Le résultat s'ajoute au document partagé, à côté des données de l'équipe.</p>
+      </article>
     </div>
   </section>
     <aside class="encart">
@@ -310,8 +390,8 @@ helm install n8n n8n-onyxia/n8n --version 1.0.2 \
   </aside>
     <section id="stack">
     <h2><span class="sec-label">Stack</span> Stack ouverte</h2>
-    <p class="lead">Tout est public et versionné&nbsp;: le chart, le script d'installation, le code du provisioning.</p>
-    <div class="tags"><span class="tag">n8n (Sustainable Use License)</span><span class="tag">czlonkowski/n8n-mcp (MIT)</span><span class="tag">library-chart InseeFrLab</span><span class="tag">Helm, Kubernetes, Onyxia</span></div>
+    <p class="lead">Tout est public et versionné&nbsp;: le chart, le script d'installation, le code du provisioning et du portail.</p>
+    <div class="tags"><span class="tag">n8n (Sustainable Use License)</span><span class="tag">czlonkowski/n8n-mcp (MIT)</span><span class="tag">moteur de formulaires grist_forms (MIT)</span><span class="tag">library-chart InseeFrLab</span><span class="tag">Helm, Kubernetes, Onyxia</span></div>
   </section>
     <section id="migration">
     <h2><span class="sec-label">Migration</span> Depuis les charts 0.x</h2>
@@ -327,6 +407,7 @@ helm install n8n n8n-onyxia/n8n --version 1.0.2 \
     <section id="journal">
     <h2><span class="sec-label">Journal</span> Versions</h2>
     <div class="journal">
+      <div><b>chart 1.2.0</b><p>Portail d'actions en option&nbsp;: les workflows choisis deviennent des formulaires lancés depuis Grist, avec éditeur visuel, essai réel, identité vérifiée par Grist et résultat enregistré dans le document. Éprouvé de bout en bout sur grist.numerique.gouv.fr. Nœuds Code en Python, exécutés comme le JavaScript dans un conteneur isolé de n8n. install.sh refuse désormais d'installer un chart plus ancien que celui en place.</p></div>
       <div><b>chart 1.0.2</b><p>Migration des instances 0.x en une commande (MIGRATE=true)&nbsp;: sauvegarde, passage par la dernière n8n 1.x pour garder le propriétaire des workflows, reprise du volume, des hôtes et de l’ancienne clé API.</p></div>
       <div><b>chart 1.0.1</b><p>Testé comme un utilisateur dans la console Onyxia&nbsp;: le bouton «&nbsp;Ouvrir le service&nbsp;» mène à l’éditeur, l’adresse MCP reste lisible dans la fenêtre du service.</p></div>
       <div><b>chart 1.0.0</b><p>n8n 2.x, serveur MCP intégré au même service, provisioning dans le pod sans droit Kubernetes, formulaire et notes aux conventions Onyxia, PostgreSQL découvert automatiquement.</p></div>
