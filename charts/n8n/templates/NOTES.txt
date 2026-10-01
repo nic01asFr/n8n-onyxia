@@ -56,6 +56,26 @@ claude mcp add n8n --transport http \
 La clé API n8n du serveur MCP est créée automatiquement, avec des droits
 limités aux workflows, exécutions, étiquettes, tables, credentials et dossiers.
 {{- end }}
+{{- if .Values.portal.enabled }}
+
+### Mettre des workflows à disposition (portail d'actions)
+
+Dans un document Grist, ajoutez un widget personnalisé avec l'adresse
+ci-dessous et un accès complet au document :
+
+```
+https://{{ .Values.portal.hostname }}/
+```
+
+Pour choisir les workflows exposés : dans le widget, connecté à Grist,
+cliquez sur « Configurer » et collez {{ if .Values.mcp.enabled }}le jeton MCP ci-dessus (ou utilisez le
+compte n8n, ou une clé API){{ else }}l'email et le mot de passe n8n ci-dessus (ou une clé API){{ end }}. Le premier compte Grist qui
+s'y connecte devient propriétaire du portail.
+
+Un workflow devient une action par son déclencheur Webhook : méthode POST,
+workflow publié, authentification Header Auth avec le credential « Portail
+d'actions (en-tête) », créé automatiquement dans n8n.
+{{- end }}
 
 ### Bon à savoir
 
@@ -112,6 +132,26 @@ claude mcp add n8n --transport http \
 
 The MCP server's n8n API key is created automatically, scoped to workflows,
 executions, tags, data tables, credentials and folders.
+{{- end }}
+{{- if .Values.portal.enabled }}
+
+### Share workflows as actions (action portal)
+
+In a Grist document, add a custom widget with the address below and full
+document access:
+
+```
+https://{{ .Values.portal.hostname }}/
+```
+
+To choose the exposed workflows: in the widget, signed in to Grist, click
+"Configurer" and paste {{ if .Values.mcp.enabled }}the MCP token above (or use the n8n account, or an
+API key){{ else }}the n8n email and password above (or an API key){{ end }}. The first Grist account to sign in
+there becomes the portal owner.
+
+A workflow becomes an action through its Webhook trigger: POST, published, and
+Header Auth with the "Portail d'actions (en-tête)" credential, created
+automatically in n8n.
 {{- end }}
 
 ### Good to know

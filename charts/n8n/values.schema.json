@@ -159,6 +159,64 @@
         }
       }
     },
+    "portal": {
+      "type": "object",
+      "title": "Action portal",
+      "description": "Turn chosen workflows into guided forms that people run from a Grist document",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "title": "Enable the action portal",
+          "description": "Adds a Grist custom widget served by this service: you pick workflows, design their form, and colleagues run them from the document. Its URL is in the service notes; you open its settings with the MCP token or your n8n account.",
+          "default": false
+        },
+        "hostname": {
+          "type": "string",
+          "title": "Portal hostname",
+          "default": "",
+          "x-onyxia": {
+            "hidden": true,
+            "overwriteDefaultWith": "{{project.id}}-n8n-portail-{{k8s.randomSubdomain}}.{{k8s.domain}}"
+          }
+        },
+        "gristOrigins": {
+          "type": "string",
+          "title": "Allowed Grist sites",
+          "description": "Comma-separated origins whose documents may use the portal and embed it.",
+          "default": "https://grist.numerique.gouv.fr,https://docs.getgrist.com",
+          "hidden": {
+            "value": false,
+            "path": "enabled",
+            "isPathRelative": true
+          }
+        }
+      }
+    },
+    "runners": {
+      "type": "object",
+      "title": "Code nodes",
+      "description": "Where Code nodes run their JavaScript and Python",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "title": "Run Code nodes in a separate container (Python support)",
+          "description": "Official n8n task runners, isolated from n8n's volume and secrets. Required for Python: the n8n image has none.",
+          "default": true
+        },
+        "python": {
+          "type": "object",
+          "title": "Python",
+          "properties": {
+            "stdlibAllow": {
+              "type": "string",
+              "title": "Importable standard library modules",
+              "description": "Comma-separated top-level module names, or * for all. The default covers computation, text and dates, without files, processes or network.",
+              "default": "json,re,math,cmath,statistics,random,secrets,decimal,fractions,datetime,time,calendar,zoneinfo,collections,itertools,functools,operator,bisect,heapq,copy,dataclasses,enum,typing,string,textwrap,unicodedata,difflib,html,csv,base64,binascii,hashlib,hmac,uuid,pprint"
+            }
+          }
+        }
+      }
+    },
     "n8n": {
       "type": "object",
       "title": "n8n",

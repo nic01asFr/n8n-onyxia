@@ -79,6 +79,39 @@
 {{- end -}}
 
 {{/*
+  Secret que le portail joint à chaque appel de webhook, et que le credential
+  « Portail d'actions (en-tête) » exige côté n8n. Tiré au sort une fois, puis
+  relu dans le Secret : le changer rendrait ce credential faux, et toutes les
+  actions refusées.
+*/}}
+{{- define "n8n.portalWebhookSecret" -}}
+{{- if not (hasKey .Values "__portalWebhookSecret") -}}
+{{- $existing := include "n8n.existingSecretData" . | fromJson -}}
+{{- $stored := index $existing "PORTAL_WEBHOOK_SECRET" | default "" | b64dec -}}
+{{- $_ := set .Values "__portalWebhookSecret" ($stored | default (randAlphaNum 48)) -}}
+{{- end -}}
+{{- index .Values "__portalWebhookSecret" -}}
+{{- end -}}
+
+{{/*
+  Jeton partagé par n8n et le lanceur des task runners. Tiré au sort une fois,
+  puis relu dans le Secret, pour qu'une mise à jour ne coupe pas le lien.
+*/}}
+{{- define "n8n.runnersAuthToken" -}}
+{{- if not (hasKey .Values "__runnersAuthToken") -}}
+{{- $existing := include "n8n.existingSecretData" . | fromJson -}}
+{{- $stored := index $existing "RUNNERS_AUTH_TOKEN" | default "" | b64dec -}}
+{{- $_ := set .Values "__runnersAuthToken" ($stored | default (randAlphaNum 48)) -}}
+{{- end -}}
+{{- index .Values "__runnersAuthToken" -}}
+{{- end -}}
+
+{{/* Image des task runners : même version que n8n par défaut. */}}
+{{- define "n8n.runnersImage" -}}
+{{- printf "%s:%s" .Values.runners.image.repository (.Values.runners.image.tag | default .Values.service.image.tag | default .Chart.AppVersion) -}}
+{{- end -}}
+
+{{/*
   Source PostgreSQL retenue :
     « external »  : database.type = postgresdb ;
     « discovery » : discovery.postgresql et un service PostgreSQL Onyxia trouvé ;

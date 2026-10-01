@@ -16,8 +16,13 @@
 #   RELEASE        : nom de la release Helm (défaut : n8n).
 #   CHART_VERSION  : version du chart (défaut : la plus récente).
 #   SKIP_MCP       : "true" pour installer n8n sans serveur MCP.
+#   PORTAL         : "true" pour ajouter le portail d'actions (workflows mis à
+#                    disposition dans Grist), "false" pour le retirer. Sans la
+#                    variable, une mise à jour garde le réglage en place.
 #   MIGRATE        : "true" pour reprendre une release des charts 0.x (n8n 1.x) en
 #                    conservant ses données : sauvegarde, puis mise à jour en place.
+#   ALLOW_DOWNGRADE : "true" pour installer un chart plus ancien que celui en place
+#                    (refusé par défaut : des conteneurs et des clés du Secret seraient perdus).
 #   BACKUP_DIR     : dossier de la sauvegarde faite avant migration (défaut : dossier courant).
 #   HELM_REPO_URL  : surcharge de l'URL du dépôt Helm (tests).
 #   HELM_CONFIG_HOME / HELM_CACHE_HOME / HELM_DATA_HOME : répertoires Helm
@@ -71,6 +76,7 @@ RELEASE="${RELEASE:-n8n}"
 DOMAIN="${ONYXIA_DOMAIN:-user.lab.sspcloud.fr}"
 N8N_HOST="${NS}-${RELEASE}.${DOMAIN}"
 MCP_HOST="${NS}-${RELEASE}-mcp.${DOMAIN}"
+PORTAL_HOST="${NS}-${RELEASE}-portail.${DOMAIN}"
 
 # --- 3. Release existante ----------------------------------------------------------
 EXISTING_CHART=$(helm list -n "$NS" --filter "^${RELEASE}\$" -o json 2>/dev/null \
@@ -135,6 +141,22 @@ log "Dépôt Helm : $HELM_REPO_URL"
 helm repo add n8n-onyxia "$HELM_REPO_URL" --force-update >/dev/null
 helm repo update n8n-onyxia >/dev/null
 
+# Garde-fou : repasser à un chart plus ancien retire des conteneurs et des clés
+# du Secret (secret des webhooks du portail, jeton des runners), et la mise à
+# jour suivante en tirerait de nouvelles, que n8n refuserait.
+# La recherche renvoie aussi le chart n8n-mcp du même dépôt : on ne lit que la
+# ligne exacte du chart n8n.
+TARGET_VERSION="${CHART_VERSION:-$(helm search repo n8n-onyxia/n8n -o json | sed -n 's|.*"name":"n8n-onyxia/n8n","version":"\([^"]*\)".*|\1|p' | head -1 || true)}"
+if [[ "$EXISTING_CHART" == n8n-[1-9]* && -n "$TARGET_VERSION" && "${ALLOW_DOWNGRADE:-false}" != "true" ]]; then
+  INSTALLED_VERSION="${EXISTING_CHART#n8n-}"
+  if [[ "$TARGET_VERSION" != "$INSTALLED_VERSION" ]] \
+     && [[ "$(printf '%s\n' "$TARGET_VERSION" "$INSTALLED_VERSION" | sort -V | head -1)" == "$TARGET_VERSION" ]]; then
+    die "La release '$RELEASE' utilise le chart $INSTALLED_VERSION, plus récent que celui du dépôt ($TARGET_VERSION).
+Le remplacer retirerait des conteneurs (portail, runners) et des clés du Secret. Rien n'a été modifié.
+Pour le faire quand même : ALLOW_DOWNGRADE=true."
+  fi
+fi
+
 HELM_ARGS=(
   --namespace "$NS"
   --set "ingress.hostname=$N8N_HOST"
@@ -147,6 +169,12 @@ HELM_ARGS=(
   --set "persistence.keepOnUninstall=true"
 )
 [[ "${SKIP_MCP:-false}" == "true" ]] && HELM_ARGS+=(--set "mcp.enabled=false")
+case "${PORTAL:-}" in
+  true)  HELM_ARGS+=(--set "portal.enabled=true" --set "portal.hostname=$PORTAL_HOST") ;;
+  false) HELM_ARGS+=(--set "portal.enabled=false") ;;
+  "")    ;;
+  *)     die "PORTAL vaut « true » ou « false », pas « $PORTAL »." ;;
+esac
 [[ -n "${CHART_VERSION:-}" ]] && HELM_ARGS+=(--version "$CHART_VERSION")
 
 if [[ "$MIGRATING" == "true" ]]; then
