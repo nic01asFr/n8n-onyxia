@@ -185,6 +185,17 @@ function schemaPortail() {
     </figure>`;
 }
 
+/** Captures rattachées à une étape : fichiers de site/assets, dimensions réelles. */
+function imagesEtape(images = []) {
+  if (!images.length) return "";
+  return `<div class="shots">
+${images.map((i) => `        <figure class="capture">
+          <a href="assets/${echapper(i.fichier)}" target="_blank" rel="noopener"><img class="shot" src="assets/${echapper(i.fichier)}" width="${Number(i.largeur)}" height="${Number(i.hauteur)}" alt="${echapper(i.alt)}" loading="lazy" /></a>
+          <figcaption>${echapper(i.legende)}</figcaption>
+        </figure>`).join("\n")}
+      </div>`;
+}
+
 function blocPortail(portail) {
   if (!portail) return "";
   const cartes = (portail.garanties || []).map((g) => `      <article class="node-card">
@@ -196,7 +207,7 @@ function blocPortail(portail) {
     <p class="lead">${echapper(portail.accroche)}</p>
     ${schemaPortail()}
     <ol class="steps">
-${(portail.etapes || []).map((s, i) => `      <li><span class="n">${i + 1}</span><div><b>${echapper(s.titre)}</b><p>${echapper(s.texte)}</p></div></li>`).join("\n")}
+${(portail.etapes || []).map((s, i) => `      <li><span class="n">${i + 1}</span><div><b>${echapper(s.titre)}</b><p>${echapper(s.texte)}</p>${imagesEtape(s.images)}</div></li>`).join("\n")}
     </ol>
     <div class="grid">
 ${cartes}
@@ -430,7 +441,11 @@ export function rendreHtml(v, versions, base = BASE) {
     .note { color: var(--muted) !important; font-size: 12.5px !important; margin-top: 0.6rem !important; }
 
     .steps { list-style: none; padding: 0; margin: 0 0 1rem; display: grid; gap: 10px; }
-    .steps li { display: grid; grid-template-columns: 2rem 1fr; gap: 0.8rem; padding: 12px 14px; background: var(--node); border: 1px solid var(--node-line); border-radius: 10px; }
+    .steps li { display: grid; grid-template-columns: 2rem minmax(0, 1fr); gap: 0.8rem; padding: 12px 14px; background: var(--node); border: 1px solid var(--node-line); border-radius: 10px; }
+    .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: 12px; align-items: start; margin-top: 0.8rem; }
+    .capture { margin: 0; min-width: 0; }
+    .shot { display: block; width: 100%; height: auto; border: 1px solid var(--node-line); border-radius: 10px; background: var(--canvas); }
+    .capture figcaption { margin-top: 0.4rem; color: var(--muted); font-size: 12.5px; }
     .steps .n { font-family: "JetBrains Mono", monospace; font-weight: 600; color: var(--accent); }
     .steps p { margin: 0.2rem 0 0; color: var(--muted); font-size: 13.5px; }
 
@@ -504,6 +519,14 @@ export function rendreHtml(v, versions, base = BASE) {
 
 export function generate({ vitrinePath = VITRINE, chartDir = CHART_DIR, distDir = DIST, base = BASE } = {}) {
   const v = chargerVitrine(vitrinePath);
+  // Une capture déclarée mais absente donnerait une image cassée en ligne.
+  for (const etape of v.portail?.etapes || []) {
+    for (const image of etape.images || []) {
+      if (!fs.existsSync(path.join(ROOT, "assets", image.fichier))) {
+        throw new Error(`vitrine.json: capture introuvable dans site/assets : ${image.fichier}`);
+      }
+    }
+  }
   const versions = lireVersions(chartDir);
   fs.mkdirSync(path.join(distDir, "assets"), { recursive: true });
   for (const asset of fs.readdirSync(path.join(ROOT, "assets"))) {

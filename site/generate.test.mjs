@@ -39,6 +39,14 @@ test("generate produit la vitrine, ses sections et ses assets", () => {
   assert.match(html, /--accent: #EA4B71/);
   assert.match(html, /install\.sh \| bash/);
   assert.match(html, /install\.sh \| PORTAL=true bash/);
+  // Chaque capture du portail est publiée avec la page, avec un texte alternatif.
+  const vitrine = chargerVitrine();
+  const captures = vitrine.portail.etapes.flatMap((e) => e.images || []);
+  assert.ok(captures.length >= 1, "aucune capture du portail");
+  for (const c of captures) {
+    assert.ok(fs.existsSync(path.join(dist, "assets", c.fichier)), `capture absente : ${c.fichier}`);
+    assert.match(html, new RegExp(`src="assets/${c.fichier}"[^>]*alt="[^"]{20,}`), `alt manquant : ${c.fichier}`);
+  }
   assert.ok(html.includes(versions.n8n), "version n8n absente");
   assert.ok(fs.existsSync(path.join(dist, "assets", "n8n.svg")), "icône absente");
   assert.doesNotMatch(html, /undefined/);

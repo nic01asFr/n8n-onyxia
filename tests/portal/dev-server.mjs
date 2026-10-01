@@ -60,7 +60,7 @@ const n8n = fakeN8n({
     status: 200,
     body: {
       success: true,
-      resume: `Synthèse de ${body.url}\n\n- point 1\n- point 2`,
+      resume: `Page d'accueil de ${String(body.url || "la page").replace(/^https?:\/\//, "").split("/")[0]}.\n\n- Présente les démarches en ligne par thème : papiers, famille, travail, logement.\n- Propose un moteur de recherche et l'accès à l'espace personnel.\n- Renvoie vers les services de proximité selon le code postal.`,
       sources: [{ title: "Service-public.fr", url: "https://www.service-public.fr" }],
       acces: body._portail.grist ? body._portail.grist.access : "aucun",
       interne: "ne doit pas apparaître",
