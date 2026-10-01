@@ -60,7 +60,16 @@
     "etapes": [
       {
         "titre": "Tu configures",
-        "texte": "Dans le widget, tu te connectes à ton n8n avec le jeton MCP ou ton compte, puis tu choisis un workflow à déclencheur Webhook. L'éditeur règle son formulaire : étapes, champs, choix, conditions. L'aperçu lance vraiment le workflow et propose ses clés de retour en un clic."
+        "texte": "Dans le widget, tu te connectes à ton n8n avec le jeton MCP ou ton compte, puis tu choisis un workflow à déclencheur Webhook. L'éditeur règle son formulaire : étapes, champs, choix, conditions. L'aperçu lance vraiment le workflow et propose ses clés de retour en un clic.",
+        "images": [
+          {
+            "fichier": "portail-editeur.png",
+            "largeur": 1770,
+            "hauteur": 1140,
+            "alt": "L'éditeur d'action du portail : à gauche la présentation et le formulaire, à droite l'aperçu qui lance le workflow.",
+            "legende": "L'éditeur : le formulaire se règle à gauche, l'aperçu à droite lance vraiment le workflow."
+          }
+        ]
       },
       {
         "titre": "Tu ouvres l'action dans un document",
@@ -68,7 +77,23 @@
       },
       {
         "titre": "Tes collègues la lancent",
-        "texte": "Un formulaire guidé, ce qui sera transmis dit avant l'envoi, puis le résultat mis en forme : statut, texte, liste, lien. La ligne s'ajoute à la table choisie, avec les droits de la personne."
+        "texte": "Un formulaire guidé, ce qui sera transmis dit avant l'envoi, puis le résultat mis en forme : statut, texte, liste, lien. La ligne s'ajoute à la table choisie, avec les droits de la personne.",
+        "images": [
+          {
+            "fichier": "portail-actions.png",
+            "largeur": 1770,
+            "hauteur": 705,
+            "alt": "La liste des actions disponibles dans un document Grist : deux cartes, avec leur titre, leur description et ce que chaque action peut faire.",
+            "legende": "Dans le document, chaque personne voit les actions qui lui sont ouvertes."
+          },
+          {
+            "fichier": "portail-resultat.png",
+            "largeur": 1770,
+            "hauteur": 1140,
+            "alt": "Le résultat d'une action : statut Réussi, résumé mis en forme, liste de sources, et la confirmation que le résultat est enregistré dans la table du document.",
+            "legende": "Le résultat s'affiche mis en forme, puis s'enregistre dans la table du document."
+          }
+        ]
       }
     ],
     "garanties": [
