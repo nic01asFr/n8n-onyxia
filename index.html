@@ -128,7 +128,11 @@
     .note { color: var(--muted) !important; font-size: 12.5px !important; margin-top: 0.6rem !important; }
 
     .steps { list-style: none; padding: 0; margin: 0 0 1rem; display: grid; gap: 10px; }
-    .steps li { display: grid; grid-template-columns: 2rem 1fr; gap: 0.8rem; padding: 12px 14px; background: var(--node); border: 1px solid var(--node-line); border-radius: 10px; }
+    .steps li { display: grid; grid-template-columns: 2rem minmax(0, 1fr); gap: 0.8rem; padding: 12px 14px; background: var(--node); border: 1px solid var(--node-line); border-radius: 10px; }
+    .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: 12px; align-items: start; margin-top: 0.8rem; }
+    .capture { margin: 0; min-width: 0; }
+    .shot { display: block; width: 100%; height: auto; border: 1px solid var(--node-line); border-radius: 10px; background: var(--canvas); }
+    .capture figcaption { margin-top: 0.4rem; color: var(--muted); font-size: 12.5px; }
     .steps .n { font-family: "JetBrains Mono", monospace; font-weight: 600; color: var(--accent); }
     .steps p { margin: 0.2rem 0 0; color: var(--muted); font-size: 13.5px; }
 
@@ -336,9 +340,23 @@ helm install n8n n8n-onyxia/n8n --version 1.2.0 \
       <figcaption>Le portail est la seule porte&nbsp;: il fait vérifier la personne par Grist, appelle le webhook avec son secret, et le résultat est rangé dans le document avec les droits du demandeur.</figcaption>
     </figure>
     <ol class="steps">
-      <li><span class="n">1</span><div><b>Tu configures</b><p>Dans le widget, tu te connectes à ton n8n avec le jeton MCP ou ton compte, puis tu choisis un workflow à déclencheur Webhook. L'éditeur règle son formulaire&nbsp;: étapes, champs, choix, conditions. L'aperçu lance vraiment le workflow et propose ses clés de retour en un clic.</p></div></li>
+      <li><span class="n">1</span><div><b>Tu configures</b><p>Dans le widget, tu te connectes à ton n8n avec le jeton MCP ou ton compte, puis tu choisis un workflow à déclencheur Webhook. L'éditeur règle son formulaire&nbsp;: étapes, champs, choix, conditions. L'aperçu lance vraiment le workflow et propose ses clés de retour en un clic.</p><div class="shots">
+        <figure class="capture">
+          <a href="assets/portail-editeur.png" target="_blank" rel="noopener"><img class="shot" src="assets/portail-editeur.png" width="1770" height="1140" alt="L'éditeur d'action du portail&nbsp;: à gauche la présentation et le formulaire, à droite l'aperçu qui lance le workflow." loading="lazy" /></a>
+          <figcaption>L'éditeur&nbsp;: le formulaire se règle à gauche, l'aperçu à droite lance vraiment le workflow.</figcaption>
+        </figure>
+      </div></div></li>
       <li><span class="n">2</span><div><b>Tu ouvres l'action dans un document</b><p>Une action n'apparaît que dans les documents où tu l'ouvres, par défaut aux seuls comptes Grist connectés. Tu décides si le workflow peut lire ou modifier le document, et dans quelle table ranger le résultat.</p></div></li>
-      <li><span class="n">3</span><div><b>Tes collègues la lancent</b><p>Un formulaire guidé, ce qui sera transmis dit avant l'envoi, puis le résultat mis en forme&nbsp;: statut, texte, liste, lien. La ligne s'ajoute à la table choisie, avec les droits de la personne.</p></div></li>
+      <li><span class="n">3</span><div><b>Tes collègues la lancent</b><p>Un formulaire guidé, ce qui sera transmis dit avant l'envoi, puis le résultat mis en forme&nbsp;: statut, texte, liste, lien. La ligne s'ajoute à la table choisie, avec les droits de la personne.</p><div class="shots">
+        <figure class="capture">
+          <a href="assets/portail-actions.png" target="_blank" rel="noopener"><img class="shot" src="assets/portail-actions.png" width="1770" height="705" alt="La liste des actions disponibles dans un document Grist&nbsp;: deux cartes, avec leur titre, leur description et ce que chaque action peut faire." loading="lazy" /></a>
+          <figcaption>Dans le document, chaque personne voit les actions qui lui sont ouvertes.</figcaption>
+        </figure>
+        <figure class="capture">
+          <a href="assets/portail-resultat.png" target="_blank" rel="noopener"><img class="shot" src="assets/portail-resultat.png" width="1770" height="1140" alt="Le résultat d'une action&nbsp;: statut Réussi, résumé mis en forme, liste de sources, et la confirmation que le résultat est enregistré dans la table du document." loading="lazy" /></a>
+          <figcaption>Le résultat s'affiche mis en forme, puis s'enregistre dans la table du document.</figcaption>
+        </figure>
+      </div></div></li>
     </ol>
     <div class="grid">
       <article class="node-card">
